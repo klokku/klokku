@@ -3,7 +3,6 @@ package budget
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"time"
@@ -162,15 +161,20 @@ func (bi BudgetRepoImpl) Update(ctx context.Context, userId int, budget Budget) 
 func (bi BudgetRepoImpl) FindMaxPosition(ctx context.Context, userId int) (int, error) {
 	query := "SELECT MAX(position) FROM budget WHERE user_id = ?"
 	row := bi.db.QueryRowContext(ctx, query, userId)
-	var maxPosition int
+	var maxPosition sql.NullInt64
 	err := row.Scan(&maxPosition)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil
-		}
-		err := fmt.Errorf("could not scan row: %w", err)
+		err := fmt.Errorf("could not find max position: %w", err)
 		log.Error(err)
 		return 0, err
 	}
-	return maxPosition, nil
+
+	if !maxPosition.Valid {
+		log.Debug(
+			"could not find max position for user %d, returning 0",
+			userId)
+		return 0, nil
+	}
+
+	return int(maxPosition.Int64), nil
 }
