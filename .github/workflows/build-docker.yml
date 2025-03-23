@@ -38,8 +38,8 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t ghcr.io/${{ github.repository }}/klokku:latest .
+          docker build -t ghcr.io/${{ github.repository }}:latest .
 
       - name: Push Docker image
         run: |
-          docker push ghcr.io/${{ github.repository }}/klokku:latest
+          docker push ghcr.io/${{ github.repository }}:latest
