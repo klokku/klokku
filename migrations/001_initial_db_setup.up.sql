@@ -14,7 +14,7 @@ CREATE TABLE budget_override
 (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     budget_id   INTEGER           NOT NULL,
-    start_date  INTEGER           NOT NULL,
+    start_date  TEXT              NOT NULL,
     weekly_time INTEGER           NOT NULL,
     notes       TEXT,
     user_id     INTEGER default 1 NOT NULL
@@ -23,7 +23,7 @@ CREATE TABLE budget_override
 CREATE TABLE event
 (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    budget_id  INTEGER NOT NULL REFERENCES budget_item (id),
+    budget_id  INTEGER NOT NULL REFERENCES budget (id),
     start_time INTEGER NOT NULL,
     end_time   INTEGER,
     user_id    INTEGER NOT NULL

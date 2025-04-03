@@ -37,7 +37,7 @@ func (bi *BudgetOverrideRepoImpl) Store(ctx context.Context, userId int, overrid
 
 	result, err := stmt.ExecContext(ctx,
 		override.BudgetID,
-		override.StartDate.Unix(),
+		override.StartDate.Format("2006-01-02"),
 		override.WeeklyTime.Minutes(),
 		override.Notes,
 		userId,
@@ -59,8 +59,9 @@ func (bi *BudgetOverrideRepoImpl) Store(ctx context.Context, userId int, overrid
 }
 
 func (bi *BudgetOverrideRepoImpl) GetAllForWeek(ctx context.Context, userId int, weekStartDate time.Time) ([]BudgetOverride, error) {
+	weekStartDateString := weekStartDate.Format("2006-01-02")
 	query := "SELECT id, budget_id, weekly_time, start_date, notes FROM budget_override WHERE start_date = ? and user_id = ?"
-	rows, err := bi.db.QueryContext(ctx, query, weekStartDate.Unix(), userId)
+	rows, err := bi.db.QueryContext(ctx, query, weekStartDateString, userId)
 	if err != nil {
 		err := fmt.Errorf("could not query budget overrides: %w", err)
 		log.Error(err)
@@ -72,16 +73,15 @@ func (bi *BudgetOverrideRepoImpl) GetAllForWeek(ctx context.Context, userId int,
 	for rows.Next() {
 		var override BudgetOverride
 		var weeklyTime int64
-		var startDateUnix int64
+		var startDateString string
 
-		if err := rows.Scan(&override.ID, &override.BudgetID, &weeklyTime, &startDateUnix, &override.Notes); err != nil {
+		if err := rows.Scan(&override.ID, &override.BudgetID, &weeklyTime, &startDateString, &override.Notes); err != nil {
 			err := fmt.Errorf("could not scan budget override: %w", err)
 			log.Error(err)
 			return nil, err
 		}
-		if startDateUnix != 0 {
-			override.StartDate = time.Unix(startDateUnix, 0)
-		} else {
+		override.StartDate, err = time.ParseInLocation("2006-01-02", startDateString, weekStartDate.Location())
+		if err != nil {
 			err := fmt.Errorf("could not parse start date from database")
 			log.Error(err)
 			return nil, err
@@ -129,7 +129,7 @@ func (bi *BudgetOverrideRepoImpl) Update(ctx context.Context, userId int, overri
 	defer stmt.Close()
 	_, err = stmt.ExecContext(ctx,
 		override.WeeklyTime.Minutes(),
-		override.StartDate.Unix(),
+		override.StartDate.Format("2006-01-02"),
 		override.Notes,
 		override.ID,
 		userId,
