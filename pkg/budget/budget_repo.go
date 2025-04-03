@@ -170,7 +170,7 @@ func (bi BudgetRepoImpl) FindMaxPosition(ctx context.Context, userId int) (int, 
 	}
 
 	if !maxPosition.Valid {
-		log.Debug(
+		log.Debugf(
 			"could not find max position for user %d, returning 0",
 			userId)
 		return 0, nil
