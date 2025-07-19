@@ -25,7 +25,7 @@ func (s *StubBudgetOverrideRepo) Store(ctx context.Context, userId int, override
 func (s *StubBudgetOverrideRepo) GetAllForWeek(ctx context.Context, userId int, weekStartDate time.Time) ([]BudgetOverride, error) {
 	overrides := make([]BudgetOverride, 0, 10)
 	for _, override := range s.data {
-		if override.StartDate == weekStartDate {
+		if override.StartDate.Equal(weekStartDate) {
 			overrides = append(overrides, override)
 		}
 	}
