@@ -154,7 +154,7 @@ func (g *ClickUpAuth) IsAuthenticated(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("true"))
+	_, _ = w.Write([]byte("true"))
 }
 
 func (g *ClickUpAuth) getToken(ctx context.Context, userId int) (*oauth2.Token, error) {

@@ -70,10 +70,7 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 
 	workspacesDTO := make([]WorkspaceDTO, 0, len(workspaces))
 	for _, workspace := range workspaces {
-		workspaceDTO := WorkspaceDTO{
-			Id:   workspace.Id,
-			Name: workspace.Name,
-		}
+		workspaceDTO := WorkspaceDTO(workspace)
 		workspacesDTO = append(workspacesDTO, workspaceDTO)
 	}
 
@@ -105,10 +102,7 @@ func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 
 	spacesDTO := make([]SpaceDTO, 0, len(spaces))
 	for _, space := range spaces {
-		spaceDTO := SpaceDTO{
-			Id:   space.Id,
-			Name: space.Name,
-		}
+		spaceDTO := SpaceDTO(space)
 		spacesDTO = append(spacesDTO, spaceDTO)
 	}
 
@@ -127,6 +121,10 @@ func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spaceId, err := strconv.Atoi(spaceIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	tags, err := h.client.GetTags(r.Context(), spaceId)
 	if err != nil {
@@ -172,10 +170,7 @@ func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 	foldersDTO := make([]FolderDTO, 0, len(folders))
 	for _, folder := range folders {
-		folderDTO := FolderDTO{
-			Id:   folder.Id,
-			Name: folder.Name,
-		}
+		folderDTO := FolderDTO(folder)
 		foldersDTO = append(foldersDTO, folderDTO)
 	}
 	w.WriteHeader(http.StatusOK)

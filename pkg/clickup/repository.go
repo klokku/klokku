@@ -31,7 +31,7 @@ func (r *RepositoryImpl) StoreConfiguration(ctx context.Context, userId int, con
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 	}()
 

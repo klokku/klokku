@@ -253,7 +253,7 @@ func (s *ClientImpl) GetFilteredTeamTasks(ctx context.Context, workspaceId int, 
 
 	// Add tag query param if tagName is provided
 	if tagName != "" {
-		queryParams["tags[]"] = fmt.Sprintf("%s", tagName)
+		queryParams["tags[]"] = tagName
 	}
 
 	// Construct the URL with query parameters
