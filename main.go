@@ -12,6 +12,7 @@ import (
 	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
 	"github.com/klokku/klokku/pkg/calendar_provider"
+	"github.com/klokku/klokku/pkg/clickup"
 	"github.com/klokku/klokku/pkg/event"
 	"github.com/klokku/klokku/pkg/google"
 	"github.com/klokku/klokku/pkg/stats"
@@ -79,6 +80,12 @@ func main() {
 	csvStatsRenderer := stats.NewCsvStatsTransformer()
 	statsHandler := stats.NewStatsHandler(statsService, csvStatsRenderer)
 
+	clickUpAuth := clickup.NewClickUpAuth(db, userService)
+	clickUpClient := clickup.NewClient(clickUpAuth)
+	clickUpRepo := clickup.NewRepository(db)
+	clickUpService := clickup.NewServiceImpl(clickUpRepo, clickUpClient)
+	clickUpHandler := clickup.NewHandler(clickUpService, clickUpClient)
+
 	router.Use(
 		func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +134,19 @@ func main() {
 	router.HandleFunc("/api/integrations/google/auth/logout", googleAuth.OAuthLogout).Methods("DELETE")
 	router.HandleFunc("/api/integrations/google/auth/callback", googleAuth.OAuthCallback).Methods("GET")
 	router.HandleFunc("/api/integrations/google/calendars", googleHandler.ListCalendars).Methods("GET")
+
+	// ClickUp Integration
+	router.HandleFunc("/api/integrations/clickup/auth/login", clickUpAuth.OAuthLogin).Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/auth/callback", clickUpAuth.OAuthCallback).Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/auth", clickUpAuth.IsAuthenticated).Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/auth", clickUpHandler.DisableIntegration).Methods("DELETE")
+	router.HandleFunc("/api/integrations/clickup/workspace", clickUpHandler.ListWorkspaces).Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/space", clickUpHandler.ListSpaces).Queries("workspaceId", "{workspaceId}").Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/tag", clickUpHandler.ListTags).Queries("spaceId", "{spaceId}").Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/folder", clickUpHandler.ListFolders).Queries("spaceId", "{spaceId}").Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/configuration", clickUpHandler.GetConfiguration).Methods("GET")
+	router.HandleFunc("/api/integrations/clickup/configuration", clickUpHandler.StoreConfiguration).Methods("PUT")
+	router.HandleFunc("/api/integrations/clickup/tasks", clickUpHandler.GetTasks).Queries("budgetId", "{budgetId}").Methods("GET")
 
 	if os.Getenv("KLOKKU_FRONTEND_DISABLED") != "true" {
 		frontend := rest.NewFrontendHandler("frontend", "index.html")
