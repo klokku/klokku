@@ -256,6 +256,9 @@ func (s *ClientImpl) GetFilteredTeamTasks(ctx context.Context, workspaceId int, 
 		queryParams["tags[]"] = tagName
 	}
 
+	// Include all subtasks in the response
+	queryParams["subtasks"] = "true"
+
 	// Construct the URL with query parameters
 	if len(queryParams) > 0 {
 		url += "?"
