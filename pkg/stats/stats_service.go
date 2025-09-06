@@ -58,6 +58,9 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 
 	totalPlanned := time.Duration(0)
 	for _, b := range budgets {
+		if b.Status != budget.BudgetStatusActive {
+			continue
+		}
 		budgetTime := b.WeeklyTime
 		if overridesByBudgetId[b.ID] != nil {
 			budgetTime = overridesByBudgetId[b.ID].WeeklyTime
