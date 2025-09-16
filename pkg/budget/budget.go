@@ -17,9 +17,9 @@ type Budget struct {
 }
 
 func (b Budget) IsActiveOn(date time.Time) bool {
-	afterStartDate := b.StartDate.IsZero() || b.StartDate.Before(date)
-	beforeEndDate := b.EndDate.IsZero() || b.EndDate.After(date)
-	return afterStartDate && beforeEndDate
+	afterOrOnStartDate := b.StartDate.IsZero() || !date.Before(b.StartDate)
+	beforeOrOnEndDate := b.EndDate.IsZero() || !date.After(b.EndDate)
+	return afterOrOnStartDate && beforeOrOnEndDate
 }
 
 // IsActiveBetween returns true if the budget is active in any date between the given start and end dates (inclusive).
