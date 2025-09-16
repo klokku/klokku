@@ -3,6 +3,7 @@ package budget
 import (
 	"context"
 	"fmt"
+
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
 )
@@ -12,6 +13,7 @@ type BudgetService interface {
 	Create(ctx context.Context, budget Budget) (Budget, error)
 	MoveAfter(ctx context.Context, id, precedingId int64) (bool, error)
 	Update(ctx context.Context, budget Budget) (bool, error)
+	Delete(ctx context.Context, id int) (bool, error)
 }
 
 type BudgetServiceImpl struct {
@@ -63,6 +65,23 @@ func (s *BudgetServiceImpl) Update(ctx context.Context, budget Budget) (bool, er
 	if !updated {
 		log.Warnf("budget not updated, probably because it does not exist (%d) or the user (%d) is not the owner", budget.ID, userId)
 		return false, fmt.Errorf("budget not updated")
+	}
+	return true, nil
+}
+
+func (s *BudgetServiceImpl) Delete(ctx context.Context, id int) (bool, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	deleted, err := s.repo.Delete(ctx, userId, id)
+	if err != nil {
+		return false, err
+	}
+	if !deleted {
+		log.Warnf("budget not deleted, probably because it does not exist (%d) or the user (%d) is not the owner", id, userId)
+		return false, fmt.Errorf("budget not deleted")
 	}
 	return true, nil
 }

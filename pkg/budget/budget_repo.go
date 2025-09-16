@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type BudgetRepo interface {
@@ -15,6 +16,7 @@ type BudgetRepo interface {
 	Update(ctx context.Context, userId int, budget Budget) (bool, error)
 	UpdatePosition(ctx context.Context, userId int, budget Budget) (bool, error)
 	FindMaxPosition(ctx context.Context, userId int) (int, error)
+	Delete(ctx context.Context, userId int, budgetId int) (bool, error)
 }
 
 type BudgetRepoImpl struct {
@@ -27,7 +29,16 @@ func NewBudgetRepo(db *sql.DB) *BudgetRepoImpl {
 
 func (bi BudgetRepoImpl) Store(ctx context.Context, userId int, budget Budget) (int, error) {
 
-	query := "INSERT INTO budget (name, weekly_time, weekly_occurrences, status, position, icon, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	query := `INSERT INTO budget (
+                    name, 
+                    weekly_time, 
+                    weekly_occurrences, 
+                    position, 
+                    icon, 
+                    start_date,
+                    end_date,
+                    user_id
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	stmt, err := bi.db.PrepareContext(ctx, query)
 	if err != nil {
@@ -37,13 +48,27 @@ func (bi BudgetRepoImpl) Store(ctx context.Context, userId int, budget Budget) (
 	}
 	defer stmt.Close()
 
+	var startDateParam interface{}
+	if !budget.StartDate.IsZero() {
+		startDateParam = budget.StartDate.Format("2006-01-02")
+	} else {
+		startDateParam = nil
+	}
+	var endDateParam interface{}
+	if !budget.EndDate.IsZero() {
+		endDateParam = budget.EndDate.Format("2006-01-02")
+	} else {
+		endDateParam = nil
+	}
+
 	result, err := stmt.ExecContext(ctx,
 		budget.Name,
 		budget.WeeklyTime.Milliseconds()/1000,
 		budget.WeeklyOccurrences,
-		budget.Status,
 		budget.Position,
 		budget.Icon,
+		startDateParam,
+		endDateParam,
 		userId,
 	)
 	if err != nil {
@@ -63,14 +88,15 @@ func (bi BudgetRepoImpl) Store(ctx context.Context, userId int, budget Budget) (
 }
 
 func (bi BudgetRepoImpl) GetAll(ctx context.Context, userId int, includeInactive bool) ([]Budget, error) {
-	expectedStatuses := "'active'"
+	activeWhereQuery := "AND (budget.start_date IS NULL OR budget.start_date <= date('now')) AND (budget.end_date IS NULL OR budget." +
+		"end_date >= date('now'))"
 	if includeInactive {
-		expectedStatuses = "'active','inactive'"
+		activeWhereQuery = ""
 	}
 	query := fmt.Sprintf(
-		"SELECT id, name, weekly_time, weekly_occurrences, position, icon, status FROM budget WHERE budget.user_id = ? "+
-			"AND status in (%s) ORDER BY status, position",
-		expectedStatuses,
+		`SELECT id, name, weekly_time, weekly_occurrences, position, icon, start_date, end_date 
+				FROM budget WHERE budget.user_id = ? %s ORDER BY position`,
+		activeWhereQuery,
 	)
 	rows, err := bi.db.QueryContext(ctx, query, userId)
 	if err != nil {
@@ -84,14 +110,40 @@ func (bi BudgetRepoImpl) GetAll(ctx context.Context, userId int, includeInactive
 	for rows.Next() {
 		var budget Budget
 		var weeklyTime int64
-		var status string
-		if err := rows.Scan(&budget.ID, &budget.Name, &weeklyTime, &budget.WeeklyOccurrences, &budget.Position, &budget.Icon, &status); err != nil {
+		var startDateString, endDate sql.NullString
+		if err := rows.Scan(
+			&budget.ID,
+			&budget.Name,
+			&weeklyTime,
+			&budget.WeeklyOccurrences,
+			&budget.Position,
+			&budget.Icon,
+			&startDateString,
+			&endDate,
+		); err != nil {
 			err := fmt.Errorf("could not scan budget: %w", err)
 			log.Error(err)
 			return nil, err
 		}
 		budget.WeeklyTime = time.Duration(weeklyTime) * time.Second
-		budget.Status = BudgetStatus(status)
+		if startDateString.Valid {
+			startDate, err := time.Parse("2006-01-02", startDateString.String)
+			if err != nil {
+				err := fmt.Errorf("could not parse start date: %w", err)
+				log.Error(err)
+				return nil, err
+			}
+			budget.StartDate = startDate
+		}
+		if endDate.Valid {
+			endDate, err := time.Parse("2006-01-02", endDate.String)
+			if err != nil {
+				err := fmt.Errorf("could not parse end date: %w", err)
+				log.Error(err)
+				return nil, err
+			}
+			budget.EndDate = endDate
+		}
 		budgets = append(budgets, budget)
 	}
 
@@ -127,7 +179,14 @@ func (bi BudgetRepoImpl) UpdatePosition(ctx context.Context, userId int, budget 
 }
 
 func (bi BudgetRepoImpl) Update(ctx context.Context, userId int, budget Budget) (bool, error) {
-	query := "UPDATE budget SET name = ?, weekly_time = ?, weekly_occurrences = ?, icon = ?, status = ? WHERE id = ? and user_id = ?"
+	query := `UPDATE budget SET 
+                  name = ?, 
+                  weekly_time = ?, 
+                  weekly_occurrences = ?, 
+                  icon = ?,
+                  start_date = ?,
+                  end_date = ?
+              WHERE id = ? and user_id = ?`
 	stmt, err := bi.db.PrepareContext(ctx, query)
 	if err != nil {
 		err := fmt.Errorf("could not prepare query: %v", err)
@@ -135,12 +194,26 @@ func (bi BudgetRepoImpl) Update(ctx context.Context, userId int, budget Budget) 
 		return false, err
 	}
 	defer stmt.Close()
+
+	var startDateParam interface{}
+	if !budget.StartDate.IsZero() {
+		startDateParam = budget.StartDate.Format("2006-01-02")
+	} else {
+		startDateParam = nil
+	}
+	var endDateParam interface{}
+	if !budget.EndDate.IsZero() {
+		endDateParam = budget.EndDate.Format("2006-01-02")
+	} else {
+		endDateParam = nil
+	}
 	result, err := stmt.ExecContext(ctx,
 		budget.Name,
 		budget.WeeklyTime.Milliseconds()/1000,
 		budget.WeeklyOccurrences,
 		budget.Icon,
-		budget.Status,
+		startDateParam,
+		endDateParam,
 		budget.ID,
 		userId,
 	)
@@ -155,6 +228,30 @@ func (bi BudgetRepoImpl) Update(ctx context.Context, userId int, budget Budget) 
 		log.Error(err)
 	}
 
+	return rowsAffected == 1, nil
+}
+
+func (bi BudgetRepoImpl) Delete(ctx context.Context, userId int, budgetId int) (bool, error) {
+	query := "DELETE FROM budget WHERE id = ? and user_id = ?"
+	stmt, err := bi.db.PrepareContext(ctx, query)
+	if err != nil {
+		err := fmt.Errorf("could not prepare query: %v", err)
+		log.Error(err)
+		return false, err
+	}
+	defer stmt.Close()
+	result, err := stmt.ExecContext(ctx, budgetId, userId)
+	if err != nil {
+		err := fmt.Errorf("could not execute query: %v", err)
+		log.Error(err)
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		err := fmt.Errorf("could not get rows affected: %w", err)
+		log.Error(err)
+		return false, err
+	}
 	return rowsAffected == 1, nil
 }
 

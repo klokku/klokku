@@ -1,0 +1,4 @@
+ALTER TABLE budget ADD COLUMN start_date TEXT NULL;
+ALTER TABLE budget ADD COLUMN end_date TEXT NULL;
+
+ALTER TABLE budget DROP COLUMN status;

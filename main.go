@@ -3,6 +3,10 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"net/http"
+	"os"
+	"time"
+
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -19,9 +23,6 @@ import (
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
 	_ "modernc.org/sqlite" // Import the SQLite driver
-	"net/http"
-	"os"
-	"time"
 )
 
 func init() {
@@ -102,6 +103,7 @@ func main() {
 	router.HandleFunc("/api/budget", budgetHandler.Register).Methods("POST")
 	router.HandleFunc("/api/budget/{id}", budgetHandler.Update).Methods("PUT")
 	router.HandleFunc("/api/budget/{id}/position", budgetHandler.SetPosition).Methods("PUT")
+	router.HandleFunc("/api/budget/{id}", budgetHandler.Delete).Methods("DELETE")
 
 	router.HandleFunc("/api/budget/override", budgetOverrideHandler.GetOverrides).Queries("startDate", "{startDate}").Methods("GET")
 	router.HandleFunc("/api/budget/override", budgetOverrideHandler.Register).Methods("POST")

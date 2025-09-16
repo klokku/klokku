@@ -1,6 +1,9 @@
 package budget
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type StubBudgetRepo struct {
 	nextId int
@@ -22,7 +25,7 @@ func (s *StubBudgetRepo) Store(ctx context.Context, userId int, budget Budget) (
 func (s *StubBudgetRepo) GetAll(ctx context.Context, userId int, includeInactive bool) ([]Budget, error) {
 	budgets := make([]Budget, 0, len(s.data))
 	for _, budget := range s.data {
-		if (includeInactive && budget.Status != BudgetStatusArchived) || budget.Status == BudgetStatusActive {
+		if budget.IsActiveOn(time.Now()) || includeInactive {
 			budgets = append(budgets, budget)
 		}
 	}
@@ -31,6 +34,11 @@ func (s *StubBudgetRepo) GetAll(ctx context.Context, userId int, includeInactive
 
 func (s *StubBudgetRepo) Update(ctx context.Context, userId int, budget Budget) (bool, error) {
 	s.data[budget.ID] = budget
+	return true, nil
+}
+
+func (s *StubBudgetRepo) Delete(ctx context.Context, userId int, budgetId int) (bool, error) {
+	delete(s.data, budgetId)
 	return true, nil
 }
 
