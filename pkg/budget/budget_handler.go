@@ -2,20 +2,22 @@ package budget
 
 import (
 	"encoding/json"
-	"github.com/gorilla/mux"
-	log "github.com/sirupsen/logrus"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/gorilla/mux"
+	log "github.com/sirupsen/logrus"
 )
 
 type BudgetDTO struct {
-	ID                int          `json:"id"`
-	Name              string       `json:"name"`
-	WeeklyTime        int          `json:"weeklyTime"`
-	WeeklyOccurrences int          `json:"weeklyOccurrences,omitempty"`
-	Icon              string       `json:"icon,omitempty"`
-	Status            BudgetStatus `json:"status,omitempty"`
+	ID                int        `json:"id"`
+	Name              string     `json:"name"`
+	WeeklyTime        int        `json:"weeklyTime"`
+	WeeklyOccurrences int        `json:"weeklyOccurrences,omitempty"`
+	Icon              string     `json:"icon,omitempty"`
+	StartDate         *time.Time `json:"startDate,omitempty"`
+	EndDate           *time.Time `json:"endDate,omitempty"`
 }
 
 type BudgetHandler struct {
@@ -101,6 +103,7 @@ func (handler *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		http.Error(w, "Budget not found", http.StatusNotFound)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -108,6 +111,30 @@ func (handler *BudgetHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (handler *BudgetHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	budgetIdString := vars["id"]
+	budgetId, err := strconv.ParseInt(budgetIdString, 10, 64)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ok, err := handler.budgetService.Delete(r.Context(), int(budgetId))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "Budget not found", http.StatusNotFound)
+		return
+	}
+
+	// Return 204 No Content for successful deletion with no response body
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (handler *BudgetHandler) SetPosition(w http.ResponseWriter, r *http.Request) {
@@ -138,23 +165,42 @@ func (handler *BudgetHandler) SetPosition(w http.ResponseWriter, r *http.Request
 }
 
 func BudgetToDTO(budget Budget) BudgetDTO {
+	var startDate, endDate *time.Time
+	if !budget.StartDate.IsZero() {
+		startDate = &budget.StartDate
+	}
+	if !budget.EndDate.IsZero() {
+		endDate = &budget.EndDate
+	}
 	return BudgetDTO{
 		ID:                budget.ID,
 		Name:              budget.Name,
 		WeeklyTime:        int(budget.WeeklyTime.Seconds()),
 		WeeklyOccurrences: budget.WeeklyOccurrences,
 		Icon:              budget.Icon,
-		Status:            budget.Status,
+		StartDate:         startDate,
+		EndDate:           endDate,
 	}
 }
 
 func DTOToBudget(budgetDTO BudgetDTO) Budget {
+
+	var startDate time.Time
+	if budgetDTO.StartDate != nil {
+		startDate = *budgetDTO.StartDate
+	}
+	var endDate time.Time
+	if budgetDTO.EndDate != nil {
+		endDate = *budgetDTO.EndDate
+	}
+
 	return Budget{
 		ID:                budgetDTO.ID,
 		Name:              budgetDTO.Name,
 		WeeklyTime:        time.Duration(budgetDTO.WeeklyTime) * time.Second,
 		WeeklyOccurrences: budgetDTO.WeeklyOccurrences,
 		Icon:              budgetDTO.Icon,
-		Status:            budgetDTO.Status,
+		StartDate:         startDate,
+		EndDate:           endDate,
 	}
 }

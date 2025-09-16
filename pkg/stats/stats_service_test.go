@@ -2,14 +2,15 @@ package stats
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/event"
 	"github.com/klokku/klokku/pkg/user"
-	"testing"
-	"time"
 )
 
 var ctx = context.WithValue(context.Background(), user.UserIDKey, "1")
@@ -138,12 +139,10 @@ func TestStatsServiceImpl_GetStats_WithBudgetOverrides(t *testing.T) {
 	budget1Id, _ := budgetRepoStub.Store(ctx, 1, budget.Budget{
 		Name:       "Budget 1",
 		WeeklyTime: time.Duration(120) * time.Minute,
-		Status:     budget.BudgetStatusActive,
 	})
 	budget2Id, _ := budgetRepoStub.Store(ctx, 1, budget.Budget{
 		Name:       "Budget 2",
 		WeeklyTime: time.Duration(30) * time.Minute,
-		Status:     budget.BudgetStatusActive,
 	})
 	budgetOverrideRepoStub.Store(ctx, 1, budget_override.BudgetOverride{ // 120 -> 100
 		BudgetID:   budget1Id,
@@ -213,7 +212,6 @@ func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
 	budget1Id, _ := budgetRepoStub.Store(ctx, 1, budget.Budget{
 		Name:       "Budget 1",
 		WeeklyTime: time.Duration(120) * time.Minute,
-		Status:     budget.BudgetStatusActive,
 	})
 	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
 		Summary:   "Budget 1",
@@ -269,19 +267,21 @@ func TestStatsServiceImpl_GetStats_WithNonActiveBudget(t *testing.T) {
 	startTime := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
 	endTime := time.Date(2023, time.January, 7, 0, 0, 0, 0, time.UTC)
 	budgetRepoStub.Store(ctx, 1, budget.Budget{
-		Name:       "Archived Budget",
+		Name:       "Budget with end date in the past",
 		WeeklyTime: time.Duration(30) * time.Minute,
-		Status:     budget.BudgetStatusArchived,
+		// EndDate before the stats period
+		EndDate: time.Date(2022, time.December, 31, 0, 0, 0, 0, time.UTC),
 	})
 	budgetRepoStub.Store(ctx, 1, budget.Budget{
-		Name:       "Archived Budget",
+		Name:       "Budget with start date in the future",
 		WeeklyTime: time.Duration(40) * time.Minute,
-		Status:     budget.BudgetStatusInactive,
+		// StartDate after the stats period
+		StartDate: time.Date(2023, time.January, 8, 0, 0, 0, 0, time.UTC),
 	})
 	budgetRepoStub.Store(ctx, 1, budget.Budget{
-		Name:       "Archived Budget",
+		Name:       "Active Budget",
 		WeeklyTime: time.Duration(50) * time.Minute,
-		Status:     budget.BudgetStatusActive,
+		StartDate:  startTime,
 	})
 	// when
 	stats, _ := statsService.GetStats(ctx, startTime, endTime)

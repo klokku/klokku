@@ -3,13 +3,14 @@ package stats
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
 	"github.com/klokku/klokku/pkg/event"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 type StatsService interface {
@@ -50,6 +51,14 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	}
 	log.Tracef("Budgets: %v", budgets)
 
+	// filter out inactive budgets
+	activeBudgets := make([]budget.Budget, 0, len(budgets))
+	for _, b := range budgets {
+		if b.IsActiveBetween(from, to) {
+			activeBudgets = append(activeBudgets, b)
+		}
+	}
+
 	overridesByBudgetId, err := s.getAllBudgetOverrides(ctx, from)
 	if err != nil {
 		return StatsSummary{}, err
@@ -57,10 +66,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	log.Tracef("Budget overrides: %v", overridesByBudgetId)
 
 	totalPlanned := time.Duration(0)
-	for _, b := range budgets {
-		if b.Status != budget.BudgetStatusActive {
-			continue
-		}
+	for _, b := range activeBudgets {
 		budgetTime := b.WeeklyTime
 		if overridesByBudgetId[b.ID] != nil {
 			budgetTime = overridesByBudgetId[b.ID].WeeklyTime
@@ -97,7 +103,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 		}
 
 		dateBudgetDuration := eventStats.ByDate[date]
-		budgetsStats := prepareStatsByBudget(budgets, nil, dateBudgetDuration, currentEventBudgetId, todayCurrentEventTime)
+		budgetsStats := prepareStatsByBudget(activeBudgets, nil, dateBudgetDuration, currentEventBudgetId, todayCurrentEventTime)
 		dateTotalTime := time.Duration(0)
 		for _, budgetStat := range budgetsStats {
 			dateTotalTime += budgetStat.Duration
@@ -108,7 +114,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	}
 
 	statsByBudget := prepareStatsByBudget(
-		budgets,
+		activeBudgets,
 		overridesByBudgetId,
 		eventStats.ByBudget,
 		currentEventBudgetId,
@@ -143,10 +149,6 @@ func prepareStatsByBudget(
 	statsByBudget := make([]BudgetStats, 0, len(budgets))
 	for _, b := range budgets {
 		budgetDuration := durationByBudgetId[b.ID]
-		if b.Status != budget.BudgetStatusActive && budgetDuration == 0 {
-			// non-active budget without events in this period
-			continue
-		}
 		budgetOverride := overridesByBudgetId[b.ID]
 		budgetCurrentEventTime := time.Duration(0)
 		if b.ID == currentEventBudgetId {
