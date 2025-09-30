@@ -3,8 +3,9 @@ package calendar
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type StubCalendar struct {
@@ -17,8 +18,8 @@ func NewStubCalendar() *StubCalendar {
 }
 
 func (c *StubCalendar) AddEvent(ctx context.Context, event Event) (*Event, error) {
-	uid := uuid.New().String()
-	event.UID = &uid
+	uid := uuid.NewString()
+	event.UID = uid
 	c.data[uid] = event
 	return &event, nil
 }
@@ -34,10 +35,10 @@ func (c *StubCalendar) GetEvents(ctx context.Context, from time.Time, to time.Ti
 }
 
 func (c *StubCalendar) ModifyEvent(ctx context.Context, event Event) (*Event, error) {
-	if event.UID == nil {
+	if event.UID == "" {
 		return nil, errors.New("event.UID is required")
 	}
-	foundEvent, ok := c.data[*event.UID]
+	foundEvent, ok := c.data[event.UID]
 	if !ok {
 		return nil, errors.New("event with given UID not found")
 	}

@@ -38,15 +38,6 @@ CREATE TABLE google_calendar_auth
     nonce         TEXT
 );
 
-CREATE TABLE schema_migrations
-(
-    version uint64,
-    dirty   bool
-);
-
-CREATE UNIQUE INDEX version_unique
-    on schema_migrations (version);
-
 CREATE TABLE user
 (
     id                                INTEGER PRIMARY KEY AUTOINCREMENT,

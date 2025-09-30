@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"time"
+
 	"github.com/klokku/klokku/pkg/calendar"
 	log "github.com/sirupsen/logrus"
 	gcal "google.golang.org/api/calendar/v3"
-	"slices"
-	"time"
 )
 
 var ErrUnathenticated = fmt.Errorf("user is unauthenticated, authentication is required")
@@ -52,7 +53,7 @@ func (c *Calendar) AddEvent(_ context.Context, event calendar.Event) (*calendar.
 		return nil, err
 	}
 
-	event.UID = &result.Id
+	event.UID = result.Id
 
 	return &event, nil
 }
@@ -97,7 +98,7 @@ func (c *Calendar) googleEventsToEvents(googleEvents []*gcal.Event) ([]calendar.
 		}
 
 		events = append(events, calendar.Event{
-			UID:       &item.Id,
+			UID:       item.Id,
 			Summary:   item.Summary,
 			StartTime: startTime,
 			EndTime:   endTime,
@@ -115,7 +116,7 @@ func (c *Calendar) ModifyEvent(_ context.Context, event calendar.Event) (*calend
 		return nil, err
 	}
 
-	updatedGoogleEvent, err := c.service.Events.Update(c.calendarId, *event.UID, &gcal.Event{
+	updatedGoogleEvent, err := c.service.Events.Update(c.calendarId, event.UID, &gcal.Event{
 		Summary:     event.Summary,
 		Description: string(metadata),
 		Start: &gcal.EventDateTime{

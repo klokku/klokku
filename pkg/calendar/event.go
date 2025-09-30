@@ -1,9 +1,11 @@
 package calendar
 
-import "time"
+import (
+	"time"
+)
 
 type Event struct {
-	UID       *string
+	UID       string
 	Summary   string
 	StartTime time.Time
 	EndTime   time.Time
