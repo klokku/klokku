@@ -2,9 +2,10 @@ package event
 
 import (
 	"context"
+	"time"
+
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/calendar"
-	"time"
 )
 
 type EventStatsService interface {
@@ -35,7 +36,7 @@ func (s *EventStatsServiceImpl) GetStats(ctx context.Context, from time.Time, to
 	for _, event := range events {
 		eventsByBudget[event.Metadata.BudgetId] += duration(event)
 
-		loc := event.StartTime.Location()
+		loc := from.Location()
 		year, month, day := event.StartTime.In(loc).Date()
 		date := time.Date(year, month, day, 0, 0, 0, 0, loc)
 		if eventsByDate[date] == nil {
