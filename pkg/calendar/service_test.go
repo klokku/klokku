@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/stretchr/testify/assert"
 )
@@ -121,7 +120,6 @@ func TestService_AddStickyEvent(t *testing.T) {
 				},
 			},
 			eventToAdd: Event{
-				UID:       uuid.NullUUID{},
 				Summary:   "Added event",
 				StartTime: start.Add(-1 * time.Hour), // 09:00
 				EndTime:   start.Add(3 * time.Hour),  // 13:00
@@ -310,7 +308,6 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 				},
 			},
 			eventToModify: Event{
-				UID:       uuid.NullUUID{},
 				Summary:   "Modified event",
 				StartTime: start.Add(-1 * time.Hour), // 09:00
 				EndTime:   start.Add(3 * time.Hour),  // 13:00

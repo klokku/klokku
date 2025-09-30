@@ -7,7 +7,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/klokku/klokku/pkg/calendar"
 	log "github.com/sirupsen/logrus"
 	gcal "google.golang.org/api/calendar/v3"
@@ -54,14 +53,7 @@ func (c *Calendar) AddEvent(_ context.Context, event calendar.Event) (*calendar.
 		return nil, err
 	}
 
-	resultUid, err := uuid.Parse(result.Id)
-	if err != nil {
-		err := fmt.Errorf("unable to parse event id: %v", err)
-		log.Error(err)
-		return nil, err
-	}
-
-	event.UID = uuid.NullUUID{UUID: resultUid, Valid: true}
+	event.UID = result.Id
 
 	return &event, nil
 }
@@ -105,15 +97,8 @@ func (c *Calendar) googleEventsToEvents(googleEvents []*gcal.Event) ([]calendar.
 			log.Warnf("found calendar event without metadata - ignoring: %s (%s - %s)", item.Summary, item.Start.DateTime, item.End.DateTime)
 		}
 
-		resultUid, err := uuid.Parse(item.Id)
-		if err != nil {
-			err := fmt.Errorf("unable to parse event id: %v", err)
-			log.Error(err)
-			return nil, err
-		}
-
 		events = append(events, calendar.Event{
-			UID:       uuid.NullUUID{UUID: resultUid, Valid: true},
+			UID:       item.Id,
 			Summary:   item.Summary,
 			StartTime: startTime,
 			EndTime:   endTime,
@@ -131,7 +116,7 @@ func (c *Calendar) ModifyEvent(_ context.Context, event calendar.Event) (*calend
 		return nil, err
 	}
 
-	updatedGoogleEvent, err := c.service.Events.Update(c.calendarId, event.UID.UUID.String(), &gcal.Event{
+	updatedGoogleEvent, err := c.service.Events.Update(c.calendarId, event.UID, &gcal.Event{
 		Summary:     event.Summary,
 		Description: string(metadata),
 		Start: &gcal.EventDateTime{

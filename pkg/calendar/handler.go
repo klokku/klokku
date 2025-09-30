@@ -3,11 +3,9 @@ package calendar
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/pkg/budget"
@@ -187,12 +185,7 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	eventUidString := vars["eventUid"]
-	eventUid, err := uuid.Parse(eventUidString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	err = h.calendar.DeleteEvent(r.Context(), eventUid)
+	err := h.calendar.DeleteEvent(r.Context(), eventUidString)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -202,7 +195,7 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 func eventToDTO(e Event) (EventDTO, error) {
 	return EventDTO{
-		UID:       e.UID.UUID.String(),
+		UID:       e.UID,
 		Summary:   e.Summary,
 		StartTime: e.StartTime,
 		EndTime:   e.EndTime,
@@ -211,17 +204,8 @@ func eventToDTO(e Event) (EventDTO, error) {
 }
 
 func dtoToEvent(e EventDTO) (Event, error) {
-	var uid uuid.NullUUID
-	if e.UID != "" {
-		parsedUid, err := uuid.Parse(e.UID)
-		if err != nil {
-			return Event{}, fmt.Errorf("invalid uid: %w", err)
-		}
-		uid = uuid.NullUUID{UUID: parsedUid, Valid: true}
-	}
-
 	return Event{
-		UID:       uid,
+		UID:       e.UID,
 		Summary:   e.Summary,
 		StartTime: e.StartTime,
 		EndTime:   e.EndTime,

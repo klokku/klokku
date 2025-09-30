@@ -240,9 +240,9 @@ func TestGetEvents_EmptyResults(t *testing.T) {
 
 func TestEventToDTO(t *testing.T) {
 	// Create a sample Event
-	uid := uuid.New()
+	uid := uuid.NewString()
 	event := Event{
-		UID:       uuid.NullUUID{UUID: uid, Valid: true},
+		UID:       uid,
 		Summary:   "Test Event",
 		StartTime: time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
 		EndTime:   time.Date(2023, 1, 1, 11, 0, 0, 0, time.UTC),
@@ -256,7 +256,7 @@ func TestEventToDTO(t *testing.T) {
 
 	// Verify conversion
 	assert.NoError(t, err)
-	assert.Equal(t, uid, uuid.MustParse(dto.UID))
+	assert.Equal(t, uid, dto.UID)
 	assert.Equal(t, "Test Event", dto.Summary)
 	assert.Equal(t, time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC), dto.StartTime)
 	assert.Equal(t, time.Date(2023, 1, 1, 11, 0, 0, 0, time.UTC), dto.EndTime)

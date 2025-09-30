@@ -9,17 +9,17 @@ import (
 )
 
 type StubCalendar struct {
-	data map[uuid.UUID]Event
+	data map[string]Event
 }
 
 func NewStubCalendar() *StubCalendar {
-	data := map[uuid.UUID]Event{}
+	data := map[string]Event{}
 	return &StubCalendar{data}
 }
 
 func (c *StubCalendar) AddEvent(ctx context.Context, event Event) (*Event, error) {
-	uid := uuid.New()
-	event.UID = uuid.NullUUID{UUID: uid, Valid: true}
+	uid := uuid.NewString()
+	event.UID = uid
 	c.data[uid] = event
 	return &event, nil
 }
@@ -35,10 +35,10 @@ func (c *StubCalendar) GetEvents(ctx context.Context, from time.Time, to time.Ti
 }
 
 func (c *StubCalendar) ModifyEvent(ctx context.Context, event Event) (*Event, error) {
-	if !event.UID.Valid {
+	if event.UID == "" {
 		return nil, errors.New("event.UID is required")
 	}
-	foundEvent, ok := c.data[event.UID.UUID]
+	foundEvent, ok := c.data[event.UID]
 	if !ok {
 		return nil, errors.New("event with given UID not found")
 	}
@@ -50,7 +50,7 @@ func (c *StubCalendar) ModifyEvent(ctx context.Context, event Event) (*Event, er
 }
 
 func (c *StubCalendar) Cleanup() {
-	c.data = map[uuid.UUID]Event{}
+	c.data = map[string]Event{}
 }
 
 func (c *StubCalendar) GetLastEvents(ctx context.Context, limit int) ([]Event, error) {

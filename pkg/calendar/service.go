@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/klokku/klokku/pkg/user"
 )
 
@@ -30,7 +29,7 @@ func (s *Service) AddEvent(ctx context.Context, event Event) (*Event, error) {
 		return nil, fmt.Errorf("failed to store event: %w", err)
 	}
 
-	event.UID = uuid.NullUUID{UUID: eventUid, Valid: true}
+	event.UID = eventUid
 
 	return &event, nil
 }
@@ -51,7 +50,7 @@ func (s *Service) AddStickyEvent(ctx context.Context, event Event) (*Event, erro
 			}
 		}
 		for _, event := range eventsToDelete {
-			err := s.DeleteEvent(ctx, event.UID.UUID)
+			err := s.DeleteEvent(ctx, event.UID)
 			if err != nil {
 				return fmt.Errorf("failed to delete event: %w", err)
 			}
@@ -112,7 +111,7 @@ func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) (*Event, e
 			}
 		}
 		for _, event := range eventsToDelete {
-			err := s.DeleteEvent(ctx, event.UID.UUID)
+			err := s.DeleteEvent(ctx, event.UID)
 			if err != nil {
 				return fmt.Errorf("failed to delete event: %w", err)
 			}
@@ -176,7 +175,7 @@ func (s *Service) GetLastEvents(ctx context.Context, limit int) ([]Event, error)
 	return s.repo.GetLastEvents(ctx, userId, limit)
 }
 
-func (s *Service) DeleteEvent(ctx context.Context, eventUid uuid.UUID) error {
+func (s *Service) DeleteEvent(ctx context.Context, eventUid string) error {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)

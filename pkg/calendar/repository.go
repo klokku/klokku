@@ -13,11 +13,11 @@ import (
 
 type Repository interface {
 	WithTransaction(ctx context.Context, fn func(repo Repository) error) error
-	StoreEvent(ctx context.Context, userId int, event Event) (uuid.UUID, error)
+	StoreEvent(ctx context.Context, userId int, event Event) (string, error)
 	GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error)
 	GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error)
 	UpdateEvent(ctx context.Context, userId int, event Event) error
-	DeleteEvent(ctx context.Context, userId int, eventId uuid.UUID) error
+	DeleteEvent(ctx context.Context, userId int, eventId string) error
 }
 type RepositoryImpl struct {
 	db *sql.DB
@@ -68,7 +68,7 @@ func (r *RepositoryImpl) WithTransaction(ctx context.Context, fn func(repo Repos
 	return nil
 }
 
-func (r *RepositoryImpl) StoreEvent(ctx context.Context, userId int, event Event) (uuid.UUID, error) {
+func (r *RepositoryImpl) StoreEvent(ctx context.Context, userId int, event Event) (string, error) {
 	query := `INSERT INTO calendar_event (
                             uid,
                             summary,
@@ -82,16 +82,16 @@ func (r *RepositoryImpl) StoreEvent(ctx context.Context, userId int, event Event
 	if err != nil {
 		err := fmt.Errorf("could not prepare query: %v", err)
 		log.Error(err)
-		return uuid.Nil, err
+		return "", err
 	}
 	defer stmt.Close()
 
-	uid := uuid.New()
-	_, err = stmt.ExecContext(ctx, uid.String(), event.Summary, event.StartTime.UnixMilli(), event.EndTime.UnixMilli(), event.Metadata.BudgetId, userId)
+	uid := uuid.NewString()
+	_, err = stmt.ExecContext(ctx, uid, event.Summary, event.StartTime.UnixMilli(), event.EndTime.UnixMilli(), event.Metadata.BudgetId, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
-		return uuid.Nil, err
+		return "", err
 	}
 
 	return uid, nil
@@ -118,7 +118,7 @@ func (r *RepositoryImpl) GetEvents(ctx context.Context, userId int, from, to tim
 
 	events := make([]Event, 0, 10)
 	for rows.Next() {
-		var uid uuid.NullUUID
+		var uid string
 		var summary string
 		var startTimeMillis int64
 		var endTimeMillis int64
@@ -161,7 +161,7 @@ func (r *RepositoryImpl) GetLastEvents(ctx context.Context, userId int, limit in
 
 	events := make([]Event, 0, 10)
 	for rows.Next() {
-		var uid uuid.NullUUID
+		var uid string
 		var summary string
 		var startTimeMillis int64
 		var endTimeMillis int64
@@ -194,7 +194,7 @@ func (r *RepositoryImpl) UpdateEvent(ctx context.Context, userId int, event Even
 		return err
 	}
 	defer stmt.Close()
-	_, err = stmt.ExecContext(ctx, event.Summary, event.StartTime.UnixMilli(), event.EndTime.UnixMilli(), event.Metadata.BudgetId, event.UID.UUID.String(),
+	_, err = stmt.ExecContext(ctx, event.Summary, event.StartTime.UnixMilli(), event.EndTime.UnixMilli(), event.Metadata.BudgetId, event.UID,
 		userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
@@ -204,7 +204,7 @@ func (r *RepositoryImpl) UpdateEvent(ctx context.Context, userId int, event Even
 	return nil
 }
 
-func (r *RepositoryImpl) DeleteEvent(ctx context.Context, userId int, eventUid uuid.UUID) error {
+func (r *RepositoryImpl) DeleteEvent(ctx context.Context, userId int, eventUid string) error {
 	query := `DELETE FROM calendar_event WHERE uid = ? AND user_id = ?`
 	stmt, err := r.getQueryer().PrepareContext(ctx, query)
 	if err != nil {
@@ -213,7 +213,7 @@ func (r *RepositoryImpl) DeleteEvent(ctx context.Context, userId int, eventUid u
 		return err
 	}
 	defer stmt.Close()
-	_, err = stmt.ExecContext(ctx, eventUid.String(), userId)
+	_, err = stmt.ExecContext(ctx, eventUid, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)

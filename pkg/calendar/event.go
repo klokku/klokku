@@ -2,12 +2,10 @@ package calendar
 
 import (
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Event struct {
-	UID       uuid.NullUUID
+	UID       string
 	Summary   string
 	StartTime time.Time
 	EndTime   time.Time

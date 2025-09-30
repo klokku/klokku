@@ -42,7 +42,7 @@ func assertEventEqual(t *testing.T, expected Event, actual Event, ignoreUID bool
 	assert.Equal(t, expected.EndTime, actual.EndTime)
 	assert.Equal(t, expected.Metadata.BudgetId, actual.Metadata.BudgetId)
 
-	if !ignoreUID && expected.UID.Valid {
+	if !ignoreUID && expected.UID != "" {
 		assert.Equal(t, expected.UID, actual.UID)
 	}
 }
@@ -69,7 +69,7 @@ func TestRepositoryImpl_StoreEvent(t *testing.T) {
 
 	// The stored event should match our original event plus have the generated UID
 	expectedEvent := testEvent
-	expectedEvent.UID = uuid.NullUUID{UUID: storedEventUid, Valid: true}
+	expectedEvent.UID = storedEventUid
 
 	assertEventEqual(t, expectedEvent, storedEvents[0], false)
 }
@@ -198,7 +198,7 @@ func TestRepositoryImpl_GetEvents(t *testing.T) {
 
 				// Check if the returned event matches the stored one
 				expected := event
-				expected.UID = uuid.NullUUID{UUID: eventUID, Valid: true}
+				expected.UID = eventUID
 
 				assertEventEqual(t, expected, fetchedEvents[0], false)
 			} else {
@@ -227,7 +227,7 @@ func TestRepositoryImpl_GetEventsMultipleEvents(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update the UID in our reference events
-		events[i].UID = uuid.NullUUID{UUID: uid, Valid: true}
+		events[i].UID = uid
 	}
 
 	// When - query period contains only events 1 and 2
@@ -283,7 +283,7 @@ func TestRepositoryImpl_GetLastEvents(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update the UID in our reference events
-		allEvents[i].UID = uuid.NullUUID{UUID: uid, Valid: true}
+		allEvents[i].UID = uid
 	}
 
 	// Test cases with different limits
@@ -387,7 +387,7 @@ func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 		Metadata: EventMetadata{
 			BudgetId: 456,
 		},
-		UID: uuid.NullUUID{UUID: eventUID, Valid: true},
+		UID: eventUID,
 	}
 
 	// When - Update the event
@@ -431,11 +431,11 @@ func TestRepositoryImpl_DeleteEvent(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update the UID in our reference events
-		allEvents[i].UID = uuid.NullUUID{UUID: eventUID, Valid: true}
+		allEvents[i].UID = eventUID
 	}
 
 	// When - Delete the event
-	err := repository.DeleteEvent(ctx, userId, allEvents[1].UID.UUID)
+	err := repository.DeleteEvent(ctx, userId, allEvents[1].UID)
 
 	// Then
 	require.NoError(t, err)
@@ -444,5 +444,5 @@ func TestRepositoryImpl_DeleteEvent(t *testing.T) {
 	finalEvents, err := repository.GetEvents(ctx, userId, baseTime, baseTime.Add(time.Hour))
 	require.NoError(t, err)
 	assert.Len(t, finalEvents, 1)
-	assert.Equal(t, allEvents[0].UID.UUID, finalEvents[0].UID.UUID)
+	assert.Equal(t, allEvents[0].UID, finalEvents[0].UID)
 }
