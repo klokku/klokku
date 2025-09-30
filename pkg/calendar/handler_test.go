@@ -191,13 +191,14 @@ func TestGetEvents_Success(t *testing.T) {
 	foundEvent2 := false
 
 	for _, dto := range dtos {
-		if dto.Summary == "Test Budget 1" {
+		switch dto.Summary {
+		case "Test Budget 1":
 			// Compare Unix timestamps instead of direct time comparison
 			assert.Equal(t, from.Unix(), dto.StartTime.Unix(), "Start time for Test Budget 1 should match")
 			assert.Equal(t, from.Add(1*time.Hour).Unix(), dto.EndTime.Unix(), "End time for Event 1 should match")
 			assert.Equal(t, 1, dto.BudgetId)
 			foundEvent1 = true
-		} else if dto.Summary == "Test Budget 2" {
+		case "Test Budget 2":
 			assert.Equal(t, to.Add(-2*time.Hour).Unix(), dto.StartTime.Unix(), "Start time for Test Budget 2 should match")
 			assert.Equal(t, to.Unix(), dto.EndTime.Unix(), "End time for Event 2 should match")
 			assert.Equal(t, 2, dto.BudgetId)

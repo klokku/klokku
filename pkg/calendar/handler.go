@@ -84,7 +84,6 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +132,6 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +180,6 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	return
 }
 
 func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +198,6 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-	return
 }
 
 func eventToDTO(e Event) (EventDTO, error) {

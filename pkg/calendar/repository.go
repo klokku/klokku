@@ -3,6 +3,7 @@ package calendar
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -45,7 +46,13 @@ func (r *RepositoryImpl) WithTransaction(ctx context.Context, fn func(repo Repos
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		// The Rollback will be a no-op if the transaction was already committed
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			// Just log rollback errors
+			log.Errorf("rollback error: %v", rbErr)
+		}
+	}()
 
 	// Create a repository that uses the transaction
 	txRepo := &RepositoryImpl{db: r.db, tx: tx}
