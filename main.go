@@ -74,6 +74,8 @@ func main() {
 	klokkuCalendarHandler := calendar.NewHandler(klokkuCalendar, budgetService.GetAll)
 
 	calendarProvider := calendar_provider.NewCalendarProvider(userService, googleService, klokkuCalendar)
+	calendarMigrator := calendar_provider.NewEventsMigratorImpl(calendarProvider)
+	calendarMigratorHandler := calendar_provider.NewMigratorHandler(calendarMigrator)
 
 	eventService := event.NewEventService(event.NewEventRepo(db), calendarProvider, userService)
 
@@ -142,6 +144,8 @@ func main() {
 	router.HandleFunc("/api/calendar/event", klokkuCalendarHandler.CreateEvent).Methods("POST")
 	router.HandleFunc("/api/calendar/event/{eventUid}", klokkuCalendarHandler.UpdateEvent).Methods("PUT")
 	router.HandleFunc("/api/calendar/event/{eventUid}", klokkuCalendarHandler.DeleteEvent).Methods("DELETE")
+	router.HandleFunc("/api/calendar/import-from-google", calendarMigratorHandler.MigrateFromGoogleToKlokku).Queries("from", "{from}", "to", "{to}").Methods("POST")
+	router.HandleFunc("/api/calendar/export-to-google", calendarMigratorHandler.MigrateFromKlokkuToGoogle).Queries("from", "{from}", "to", "{to}").Methods("POST")
 
 	// Google Calendar Integration
 	router.HandleFunc("/api/integrations/google/auth/login", googleAuth.OAuthLogin).Methods("GET")
