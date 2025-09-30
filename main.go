@@ -15,6 +15,7 @@ import (
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
+	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/calendar_provider"
 	"github.com/klokku/klokku/pkg/clickup"
 	"github.com/klokku/klokku/pkg/event"
@@ -63,13 +64,18 @@ func main() {
 	googleService := google.NewService(googleAuth)
 	googleHandler := google.NewHandler(googleService)
 
-	calendarProvider := calendar_provider.NewCalendarProvider(userService, googleService)
-
-	eventService := event.NewEventService(event.NewEventRepo(db), calendarProvider, userService)
 	budgetRepo := budget.NewBudgetRepo(db)
 	budgetService := budget.NewBudgetServiceImpl(budgetRepo)
 	budgetOverrideRepo := budget_override.NewBudgetOverrideRepo(db)
 	budgetOverrideService := budget_override.NewBudgetOverrideService(budgetOverrideRepo)
+
+	klokkuCalendarRepository := calendar.NewRepository(db)
+	klokkuCalendar := calendar.NewService(klokkuCalendarRepository)
+	klokkuCalendarHandler := calendar.NewHandler(klokkuCalendar, budgetService.GetAll)
+
+	calendarProvider := calendar_provider.NewCalendarProvider(userService, googleService, klokkuCalendar)
+
+	eventService := event.NewEventService(event.NewEventRepo(db), calendarProvider, userService)
 
 	eventHandler := event.NewEventHandler(eventService)
 	budgetHandler := budget.NewBudgetHandler(budgetService)
@@ -130,6 +136,12 @@ func main() {
 	router.HandleFunc("/api/user/current/photo", userHandler.GetPhoto).Methods("GET")
 	router.HandleFunc("/api/user/{userId}/photo", userHandler.GetPhoto).Methods("GET")
 	router.HandleFunc("/api/user/current/photo", userHandler.DeletePhoto).Methods("DELETE")
+
+	// Calendar
+	router.HandleFunc("/api/calendar/event", klokkuCalendarHandler.GetEvents).Queries("from", "{from}", "to", "{to}").Methods("GET")
+	router.HandleFunc("/api/calendar/event", klokkuCalendarHandler.CreateEvent).Methods("POST")
+	router.HandleFunc("/api/calendar/event/{eventUid}", klokkuCalendarHandler.UpdateEvent).Methods("PUT")
+	router.HandleFunc("/api/calendar/event/{eventUid}", klokkuCalendarHandler.DeleteEvent).Methods("DELETE")
 
 	// Google Calendar Integration
 	router.HandleFunc("/api/integrations/google/auth/login", googleAuth.OAuthLogin).Methods("GET")

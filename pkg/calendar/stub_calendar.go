@@ -3,22 +3,23 @@ package calendar
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type StubCalendar struct {
-	data map[string]Event
+	data map[uuid.UUID]Event
 }
 
 func NewStubCalendar() *StubCalendar {
-	data := map[string]Event{}
+	data := map[uuid.UUID]Event{}
 	return &StubCalendar{data}
 }
 
 func (c *StubCalendar) AddEvent(ctx context.Context, event Event) (*Event, error) {
-	uid := uuid.New().String()
-	event.UID = &uid
+	uid := uuid.New()
+	event.UID = uuid.NullUUID{UUID: uid, Valid: true}
 	c.data[uid] = event
 	return &event, nil
 }
@@ -34,10 +35,10 @@ func (c *StubCalendar) GetEvents(ctx context.Context, from time.Time, to time.Ti
 }
 
 func (c *StubCalendar) ModifyEvent(ctx context.Context, event Event) (*Event, error) {
-	if event.UID == nil {
+	if !event.UID.Valid {
 		return nil, errors.New("event.UID is required")
 	}
-	foundEvent, ok := c.data[*event.UID]
+	foundEvent, ok := c.data[event.UID.UUID]
 	if !ok {
 		return nil, errors.New("event with given UID not found")
 	}
@@ -49,7 +50,7 @@ func (c *StubCalendar) ModifyEvent(ctx context.Context, event Event) (*Event, er
 }
 
 func (c *StubCalendar) Cleanup() {
-	c.data = map[string]Event{}
+	c.data = map[uuid.UUID]Event{}
 }
 
 func (c *StubCalendar) GetLastEvents(ctx context.Context, limit int) ([]Event, error) {

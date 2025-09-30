@@ -1,9 +1,13 @@
 package calendar
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Event struct {
-	UID       *string
+	UID       uuid.NullUUID
 	Summary   string
 	StartTime time.Time
 	EndTime   time.Time

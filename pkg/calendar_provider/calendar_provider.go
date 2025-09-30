@@ -4,21 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/google"
 	"github.com/klokku/klokku/pkg/user"
-	"time"
 )
 
 type CalendarProvider struct {
-	userService   user.Service
-	googleService google.Service
+	userService    user.Service
+	googleService  google.Service
+	klokkuCalendar calendar.Calendar
 }
 
-func NewCalendarProvider(userService user.Service, googleService google.Service) *CalendarProvider {
+func NewCalendarProvider(userService user.Service, googleService google.Service, klokkuCalendar calendar.Calendar) *CalendarProvider {
 	return &CalendarProvider{
-		userService:   userService,
-		googleService: googleService,
+		userService:    userService,
+		googleService:  googleService,
+		klokkuCalendar: klokkuCalendar,
 	}
 }
 
@@ -28,8 +31,10 @@ func (c *CalendarProvider) getCalendar(ctx context.Context) (calendar.Calendar, 
 		return nil, fmt.Errorf("failed to get current user when getting calendar: %w", err)
 	}
 	switch u := currentUser; u.Settings.EventCalendarType {
-	case "google":
+	case user.GoogleCalendar:
 		return c.googleService.GetCalendar(ctx, u.Settings.GoogleCalendar.CalendarId)
+	case user.KlokkuCalendar:
+		return c.klokkuCalendar, nil
 	}
 	return nil, errors.New("unknown calendar type")
 }

@@ -151,6 +151,7 @@ func (handler *BudgetHandler) SetPosition(w http.ResponseWriter, r *http.Request
 	}
 	if err := json.NewDecoder(r.Body).Decode(&setPositionDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	ok, err := handler.budgetService.MoveAfter(r.Context(), budgetId, setPositionDTO.PrecedingId)
