@@ -19,6 +19,10 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) AddEvent(ctx context.Context, event Event) (*Event, error) {
+	err := validateEvent(event)
+	if err != nil {
+		return nil, err
+	}
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
@@ -35,6 +39,10 @@ func (s *Service) AddEvent(ctx context.Context, event Event) (*Event, error) {
 }
 
 func (s *Service) AddStickyEvent(ctx context.Context, event Event) (*Event, error) {
+	err := validateEvent(event)
+	if err != nil {
+		return nil, err
+	}
 	overlappingEvents, err := s.GetEvents(ctx, event.StartTime, event.EndTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
@@ -84,6 +92,10 @@ func (s *Service) GetEvents(ctx context.Context, from time.Time, to time.Time) (
 }
 
 func (s *Service) ModifyEvent(ctx context.Context, event Event) (*Event, error) {
+	err := validateEvent(event)
+	if err != nil {
+		return nil, err
+	}
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
@@ -96,6 +108,10 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) (*Event, error) 
 }
 
 func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) (*Event, error) {
+	err := validateEvent(event)
+	if err != nil {
+		return nil, err
+	}
 	overlappingEvents, err := s.GetEvents(ctx, event.StartTime, event.EndTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
@@ -181,4 +197,20 @@ func (s *Service) DeleteEvent(ctx context.Context, eventUid string) error {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
 	return s.repo.DeleteEvent(ctx, userId, eventUid)
+}
+
+func validateEvent(event Event) error {
+	if event.StartTime.IsZero() {
+		return fmt.Errorf("start time cannot be zero")
+	}
+	if event.EndTime.IsZero() {
+		return fmt.Errorf("end time cannot be zero")
+	}
+	if !event.EndTime.After(event.StartTime) {
+		return fmt.Errorf("end time must be after start time")
+	}
+	if event.Summary == "" {
+		return fmt.Errorf("summary cannot be empty")
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -395,6 +396,250 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 			}
 			assert.Equalf(t, tc.want, gotEventsToCompare, "Got events: %v", gotEventsToCompare)
 
+		})
+	}
+}
+
+//func TestService_AddEvent_Validation(t *testing.T) {
+//	s, ctx := setupServiceTest(t)
+//	event := Event{
+//		Summary:   "Modified event",
+//		StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+//		EndTime:   time.Date(2026, 1, 1, 9, 59, 0, 0, time.Local),
+//	}
+//	_, err := s.AddEvent(ctx, event)
+//	assert.Error(t, err)
+//	assert.Equal(t, "end time must be after start time", err.Error())
+//}
+
+func TestService_AddEvent_Validation(t *testing.T) {
+	tests := []struct {
+		name  string
+		event Event
+		want  error
+	}{
+		{
+			name: "End time before start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 9, 59, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "End time same as start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "Start time is not set",
+			event: Event{
+				Summary: "Modified event",
+				EndTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("start time cannot be zero"),
+		},
+		{
+			name: "End time is not set",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time cannot be zero"),
+		},
+		{
+			name: "Summary is not set",
+			event: Event{
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 11, 0, 0, 0, time.Local),
+			},
+			want: errors.New("summary cannot be empty"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, ctx := setupServiceTest(t)
+			_, err := s.AddEvent(ctx, test.event)
+			assert.Equal(t, test.want, err)
+		})
+	}
+}
+
+func TestService_AddStickyEvent_Validation(t *testing.T) {
+	tests := []struct {
+		name  string
+		event Event
+		want  error
+	}{
+		{
+			name: "End time before start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 9, 59, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "End time same as start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "Start time is not set",
+			event: Event{
+				Summary: "Modified event",
+				EndTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("start time cannot be zero"),
+		},
+		{
+			name: "End time is not set",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time cannot be zero"),
+		},
+		{
+			name: "Summary is not set",
+			event: Event{
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 11, 0, 0, 0, time.Local),
+			},
+			want: errors.New("summary cannot be empty"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, ctx := setupServiceTest(t)
+			_, err := s.AddStickyEvent(ctx, test.event)
+			assert.Equal(t, test.want, err)
+		})
+	}
+}
+
+func TestService_ModifyEvent_Validation(t *testing.T) {
+	tests := []struct {
+		name  string
+		event Event
+		want  error
+	}{
+		{
+			name: "End time before start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 9, 59, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "End time same as start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "Start time is not set",
+			event: Event{
+				Summary: "Modified event",
+				EndTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("start time cannot be zero"),
+		},
+		{
+			name: "End time is not set",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time cannot be zero"),
+		},
+		{
+			name: "Summary is not set",
+			event: Event{
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 11, 0, 0, 0, time.Local),
+			},
+			want: errors.New("summary cannot be empty"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, ctx := setupServiceTest(t)
+			_, err := s.ModifyEvent(ctx, test.event)
+			assert.Equal(t, test.want, err)
+		})
+	}
+}
+
+func TestService_ModifyStickyEvent_Validation(t *testing.T) {
+	tests := []struct {
+		name  string
+		event Event
+		want  error
+	}{
+		{
+			name: "End time before start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 9, 59, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "End time same as start time",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time must be after start time"),
+		},
+		{
+			name: "Start time is not set",
+			event: Event{
+				Summary: "Modified event",
+				EndTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("start time cannot be zero"),
+		},
+		{
+			name: "End time is not set",
+			event: Event{
+				Summary:   "Modified event",
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+			},
+			want: errors.New("end time cannot be zero"),
+		},
+		{
+			name: "Summary is not set",
+			event: Event{
+				StartTime: time.Date(2026, 1, 1, 10, 0, 0, 0, time.Local),
+				EndTime:   time.Date(2026, 1, 1, 11, 0, 0, 0, time.Local),
+			},
+			want: errors.New("summary cannot be empty"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, ctx := setupServiceTest(t)
+			_, err := s.ModifyStickyEvent(ctx, test.event)
+			assert.Equal(t, test.want, err)
 		})
 	}
 }
