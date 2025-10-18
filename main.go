@@ -41,11 +41,16 @@ func init() {
 
 func main() {
 
-	db, err := sql.Open("sqlite", "./storage/klokku-data.db")
+	db, err := sql.Open("sqlite", "./storage/klokku-data.db?_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL&_cache_size=1000000")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
+
+	// Configure connection pool
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 
 	m, err := migrate.New("file://migrations", "sqlite://./storage/klokku-data.db")
 	if err != nil {
