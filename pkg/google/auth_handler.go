@@ -6,26 +6,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
+	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/calendar/v3"
-	"net/http"
-	"os"
-	"strings"
-	"time"
 )
-
-var googleOauthConfig = &oauth2.Config{
-	ClientID:     os.Getenv("KLOKKU_GOOGLE_CLIENT_ID"),
-	ClientSecret: os.Getenv("KLOKKU_GOOGLE_CLIENT_SECRET"),
-	Endpoint:     google.Endpoint,
-	RedirectURL:  os.Getenv("KLOKKU_HOST") + "/api/integrations/google/auth/callback",
-	Scopes:       []string{calendar.CalendarEventsScope, calendar.CalendarReadonlyScope},
-}
 
 type googleAuthRedirect struct {
 	RedirectUrl string `json:"redirectUrl"`
@@ -34,10 +27,19 @@ type googleAuthRedirect struct {
 type GoogleAuth struct {
 	db          *sql.DB
 	userService user.Service
+	oauthConfig *oauth2.Config
 }
 
-func NewGoogleAuth(db *sql.DB, userService user.Service) *GoogleAuth {
-	return &GoogleAuth{db: db, userService: userService}
+func NewGoogleAuth(db *sql.DB, userService user.Service, cfg config.Application) *GoogleAuth {
+	oauthConfig := &oauth2.Config{
+		ClientID:     cfg.Google.ClientId,
+		ClientSecret: cfg.Google.ClientSecret,
+		Endpoint:     google.Endpoint,
+		RedirectURL:  cfg.Host + "/api/integrations/google/auth/callback",
+		Scopes:       []string{calendar.CalendarEventsScope, calendar.CalendarReadonlyScope},
+	}
+
+	return &GoogleAuth{db: db, userService: userService, oauthConfig: oauthConfig}
 }
 
 func (g *GoogleAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +84,7 @@ func (g *GoogleAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Tracef("Redirecting to Google auth URL with nonce: %s", stateNonce)
-	u := googleOauthConfig.AuthCodeURL(finalUrl+"|"+stateNonce, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
+	u := g.oauthConfig.AuthCodeURL(finalUrl+"|"+stateNonce, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 
 	w.WriteHeader(http.StatusOK)
 	encodeErr := json.NewEncoder(w).Encode(googleAuthRedirect{
@@ -102,7 +104,7 @@ func (g *GoogleAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	finalUrl := parts[0]
 	nonce := parts[1]
 
-	token, err := googleOauthConfig.Exchange(context.Background(), code)
+	token, err := g.oauthConfig.Exchange(context.Background(), code)
 	if err != nil {
 		err := fmt.Errorf("unable to exchange code for token: %v", err)
 		log.Error(err)
@@ -146,7 +148,7 @@ func (g *GoogleAuth) getClient(ctx context.Context, userId int) (*http.Client, e
 	if token == nil {
 		return nil, nil
 	}
-	return googleOauthConfig.Client(context.Background(), token), nil
+	return g.oauthConfig.Client(context.Background(), token), nil
 }
 
 func (g *GoogleAuth) OAuthLogout(w http.ResponseWriter, r *http.Request) {

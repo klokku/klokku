@@ -11,6 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/sqlite"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/gorilla/mux"
+	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget"
@@ -41,7 +42,12 @@ func init() {
 
 func main() {
 
-	db, err := sql.Open("sqlite", "./storage/klokku-data.db?_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL&_cache_size=1000000")
+	cfg, err := config.Load("./config/application.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", cfg.Database.SqlitePath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -65,7 +71,7 @@ func main() {
 	userService := user.NewUserService(user.NewUserRepo(db))
 	userHandler := user.NewHandler(userService)
 
-	googleAuth := google.NewGoogleAuth(db, userService)
+	googleAuth := google.NewGoogleAuth(db, userService, cfg)
 	googleService := google.NewService(googleAuth)
 	googleHandler := google.NewHandler(googleService)
 
@@ -94,7 +100,7 @@ func main() {
 	csvStatsRenderer := stats.NewCsvStatsTransformer()
 	statsHandler := stats.NewStatsHandler(statsService, csvStatsRenderer)
 
-	clickUpAuth := clickup.NewClickUpAuth(db, userService)
+	clickUpAuth := clickup.NewClickUpAuth(db, userService, cfg)
 	clickUpClient := clickup.NewClient(clickUpAuth)
 	clickUpRepo := clickup.NewRepository(db)
 	clickUpService := clickup.NewServiceImpl(clickUpRepo, clickUpClient)
@@ -171,7 +177,7 @@ func main() {
 	router.HandleFunc("/api/integrations/clickup/configuration", clickUpHandler.StoreConfiguration).Methods("PUT")
 	router.HandleFunc("/api/integrations/clickup/tasks", clickUpHandler.GetTasks).Queries("budgetId", "{budgetId}").Methods("GET")
 
-	if os.Getenv("KLOKKU_FRONTEND_DISABLED") != "true" {
+	if cfg.Frontend.Enabled {
 		frontend := rest.NewFrontendHandler("frontend", "index.html")
 		router.PathPrefix("/").Handler(frontend)
 	}
