@@ -6,23 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
+	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
-	"net/http"
-	"os"
-	"strings"
-	"time"
 )
-
-var clickUpOauthConfig = &oauth2.Config{
-	ClientID:     os.Getenv("KLOKKU_CLICKUP_CLIENT_ID"),
-	ClientSecret: os.Getenv("KLOKKU_CLICKUP_CLIENT_SECRET"),
-	Endpoint:     endpoint,
-	RedirectURL:  os.Getenv("KLOKKU_HOST") + "/api/integrations/clickup/auth/callback",
-}
 
 var endpoint = oauth2.Endpoint{
 	AuthURL:       "https://app.clickup.com/api",
@@ -38,10 +32,18 @@ type clickUpAuthRedirect struct {
 type ClickUpAuth struct {
 	db          *sql.DB
 	userService user.Service
+	oauthConfig *oauth2.Config
 }
 
-func NewClickUpAuth(db *sql.DB, userService user.Service) *ClickUpAuth {
-	return &ClickUpAuth{db: db, userService: userService}
+func NewClickUpAuth(db *sql.DB, userService user.Service, cfg config.Application) *ClickUpAuth {
+	oauthConfig := &oauth2.Config{
+		ClientID:     cfg.ClickUp.ClientId,
+		ClientSecret: cfg.ClickUp.ClientSecret,
+		Endpoint:     endpoint,
+		RedirectURL:  cfg.Host + "/api/integrations/clickup/auth/callback",
+	}
+
+	return &ClickUpAuth{db: db, userService: userService, oauthConfig: oauthConfig}
 }
 
 func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +88,7 @@ func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Tracef("Redirecting to ClickUp auth URL with nonce: %s", stateNonce)
-	u := clickUpOauthConfig.AuthCodeURL(finalUrl+"|"+stateNonce, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
+	u := g.oauthConfig.AuthCodeURL(finalUrl+"|"+stateNonce, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 
 	w.WriteHeader(http.StatusOK)
 	encodeErr := json.NewEncoder(w).Encode(clickUpAuthRedirect{
@@ -106,7 +108,7 @@ func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	finalUrl := parts[0]
 	nonce := parts[1]
 
-	token, err := clickUpOauthConfig.Exchange(context.Background(), code)
+	token, err := g.oauthConfig.Exchange(context.Background(), code)
 	if err != nil {
 		err := fmt.Errorf("unable to exchange code for token: %v", err)
 		log.Error(err)
@@ -184,5 +186,5 @@ func (g *ClickUpAuth) getClient(ctx context.Context, userId int) (*http.Client, 
 	if token == nil {
 		return nil, nil
 	}
-	return clickUpOauthConfig.Client(ctx, token), nil
+	return g.oauthConfig.Client(ctx, token), nil
 }
