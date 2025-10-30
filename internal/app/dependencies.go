@@ -3,7 +3,6 @@ package app
 import (
 	"database/sql"
 
-	"github.com/klokku/klokku/internal/auth"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget"
@@ -19,8 +18,6 @@ import (
 
 // Dependencies holds all services and handlers for the application.
 type Dependencies struct {
-	AuthTokenValidator auth.TokenValidator
-
 	UserService user.Service
 	UserHandler *user.Handler
 
@@ -63,8 +60,6 @@ type Dependencies struct {
 // BuildDependencies initializes and wires all application services and handlers.
 func BuildDependencies(db *sql.DB, cfg config.Application) *Dependencies {
 	deps := &Dependencies{}
-
-	deps.AuthTokenValidator = auth.TokenValidator{}
 
 	deps.UserService = user.NewUserService(user.NewUserRepo(db))
 	deps.UserHandler = user.NewHandler(deps.UserService)
