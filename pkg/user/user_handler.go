@@ -2,13 +2,14 @@ package user
 
 import (
 	"encoding/json"
-	"github.com/gorilla/mux"
-	"github.com/klokku/klokku/internal/rest"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/klokku/klokku/internal/rest"
+	log "github.com/sirupsen/logrus"
 )
 
 type UserDTO struct {
