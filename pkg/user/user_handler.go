@@ -201,7 +201,6 @@ func (h *Handler) IsUsernameAvailable(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(map[string]bool{"available": isAvailable}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	return
 }
 
 func (h *Handler) GetAvailableUsers(w http.ResponseWriter, r *http.Request) {
