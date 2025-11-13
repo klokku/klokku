@@ -14,16 +14,10 @@ import (
 
 type Application struct {
 	Host     string   `koanf:"host"`
-	Auth     Auth     `koanf:"auth"`
 	Frontend Frontend `koanf:"frontend"`
 	ClickUp  ClickUp  `koanf:"clickup"`
 	Google   Google   `koanf:"google"`
 	Database Database `koanf:"db"`
-}
-
-type Auth struct {
-	Enabled   bool   `koanf:"enabled"`
-	JwksetUrl string `koanf:"jwkset_url"`
 }
 
 type Frontend struct {
@@ -31,17 +25,17 @@ type Frontend struct {
 }
 
 type ClickUp struct {
-	ClientId     string `koanf:"client_id"`
-	ClientSecret string `koanf:"client_secret"`
+	ClientId     string `koanf:"clientid"`
+	ClientSecret string `koanf:"clientsecret"`
 }
 
 type Google struct {
-	ClientId     string `koanf:"client_id"`
-	ClientSecret string `koanf:"client_secret"`
+	ClientId     string `koanf:"clientid"`
+	ClientSecret string `koanf:"clientsecret"`
 }
 
 type Database struct {
-	SqlitePath string `koanf:"sqlite_path"`
+	SqlitePath string `koanf:"sqlitepath"`
 }
 
 func Load(path string) (Application, error) {
@@ -49,9 +43,6 @@ func Load(path string) (Application, error) {
 
 	err := k.Load(structs.Provider(Application{
 		Host: "http://localhost:3000",
-		Auth: Auth{
-			Enabled: false,
-		},
 		Frontend: Frontend{
 			Enabled: true,
 		},

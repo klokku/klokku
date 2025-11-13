@@ -2,17 +2,18 @@ package user
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"time"
+
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/rest"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 type UserDTO struct {
-	Id          int         `json:"id"`
+	Uid         string      `json:"uid"`
 	Username    string      `json:"username"`
 	DisplayName string      `json:"displayName"`
 	Settings    SettingsDTO `json:"settings"`
@@ -41,7 +42,7 @@ func NewHandler(userService Service) *Handler {
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	log.Trace("Creating user")
+	log.Debug("Creating user")
 
 	var user UserDTO
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -54,7 +55,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	log.Debug("Creating new user: ", user)
+	log.Tracef("Creating new user: %+v", user)
 
 	if len(user.Username) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
@@ -80,10 +81,20 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	createdUser, err := h.userService.CreateUser(r.Context(), dtoToUser(user))
 	if err != nil {
+		if errors.Is(err, ErrUserDataInvalid) {
+			w.WriteHeader(http.StatusBadRequest)
+			encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
+				Error: "Invalid user data",
+			})
+			if encodeErr != nil {
+				http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Debug("Created user: ", createdUser)
+	log.Tracef("Created user: %+v", createdUser)
 
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(userToDTO(&createdUser)); err != nil {
@@ -98,6 +109,10 @@ func (h *Handler) CurrentUser(w http.ResponseWriter, r *http.Request) {
 
 	currentUser, err := h.userService.GetCurrentUser(r.Context())
 	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -160,6 +175,34 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) IsUsernameAvailable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	log.Trace("Checking if username is available")
+
+	vars := mux.Vars(r)
+	username := vars["username"]
+	log.Debug("Checking availability of username: ", username)
+	if len(username) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
+			Error: "Username is required",
+		})
+		if encodeErr != nil {
+			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
+		}
+	}
+
+	isAvailable, err := h.userService.IsUsernameAvailable(r.Context(), username)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]bool{"available": isAvailable}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func (h *Handler) GetAvailableUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Getting available users")
@@ -186,14 +229,14 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	log.Trace("Deleting user")
 
 	vars := mux.Vars(r)
-	userIdString := vars["id"]
-	userId, err := strconv.ParseInt(userIdString, 10, 64)
+	userUid := vars["userUid"]
+	user, err := h.userService.GetUserByUid(r.Context(), userUid)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Debug("Deleting user with id: ", userId)
-	err = h.userService.DeleteUser(r.Context(), int(userId))
+	log.Debug("Deleting user with id: ", user.Id)
+	err = h.userService.DeleteUser(r.Context(), user.Id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -252,14 +295,14 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 	log.Trace("Getting user photo")
 
 	vars := mux.Vars(r)
-	userIdString := vars["userId"]
-	if userIdString != "" {
-		userId, err := strconv.ParseInt(userIdString, 10, 64)
+	userUid := vars["userUid"]
+	if userUid != "" {
+		user, err := h.userService.GetUserByUid(r.Context(), userUid)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		photo, err := h.userService.GetUserPhoto(r.Context(), int(userId))
+		photo, err := h.userService.GetUserPhoto(r.Context(), user.Id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -300,7 +343,7 @@ func (h *Handler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 
 func userToDTO(user *User) UserDTO {
 	return UserDTO{
-		Id:          user.Id,
+		Uid:         user.Uid,
 		Username:    user.Username,
 		DisplayName: user.DisplayName,
 		Settings:    settingsToDTO(user.Settings),
@@ -320,7 +363,7 @@ func settingsToDTO(settings Settings) SettingsDTO {
 
 func dtoToUser(userDTO UserDTO) User {
 	return User{
-		Id:          userDTO.Id,
+		Uid:         userDTO.Uid,
 		Username:    userDTO.Username,
 		DisplayName: userDTO.DisplayName,
 		Settings:    dtoToSettings(userDTO.Settings),

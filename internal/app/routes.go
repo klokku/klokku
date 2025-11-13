@@ -32,15 +32,16 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/stats", deps.StatsHandler.GetStats).Queries("fromDate", "{fromDate}", "toDate", "{toDate}").Methods("GET")
 
 	// User management
-	r.HandleFunc("/api/user", deps.UserHandler.CreateUser).Methods("POST")
 	r.HandleFunc("/api/user/current", deps.UserHandler.CurrentUser).Methods("GET")
 	r.HandleFunc("/api/user/current", deps.UserHandler.UpdateUser).Methods("PUT")
-	r.HandleFunc("/api/user", deps.UserHandler.GetAvailableUsers).Methods("GET")
-	r.HandleFunc("/api/user/{userId}", deps.UserHandler.DeleteUser).Methods("DELETE")
 	r.HandleFunc("/api/user/current/photo", deps.UserHandler.UploadPhoto).Methods("PUT")
 	r.HandleFunc("/api/user/current/photo", deps.UserHandler.GetPhoto).Methods("GET")
-	r.HandleFunc("/api/user/{userId}/photo", deps.UserHandler.GetPhoto).Methods("GET")
 	r.HandleFunc("/api/user/current/photo", deps.UserHandler.DeletePhoto).Methods("DELETE")
+	r.HandleFunc("/api/user", deps.UserHandler.CreateUser).Methods("POST")
+	r.HandleFunc("/api/user/name-availability", deps.UserHandler.IsUsernameAvailable).Methods("GET").Queries("username", "{username}")
+	r.HandleFunc("/api/user", deps.UserHandler.GetAvailableUsers).Methods("GET")
+	r.HandleFunc("/api/user/{userUid}", deps.UserHandler.DeleteUser).Methods("DELETE")
+	r.HandleFunc("/api/user/{userUid}/photo", deps.UserHandler.GetPhoto).Methods("GET")
 
 	// Klokku Calendar
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetEvents).Queries("from", "{from}", "to", "{to}").Methods("GET")

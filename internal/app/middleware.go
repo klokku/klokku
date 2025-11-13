@@ -1,11 +1,13 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/pkg/user"
+	log "github.com/sirupsen/logrus"
 )
 
 // SetupMiddleware wires all HTTP middlewares for the application.
@@ -16,8 +18,22 @@ func SetupMiddleware(r *mux.Router, deps *Dependencies, cfg config.Application) 
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			userIdHeader := req.Header.Get("X-User-Id")
 			ctx := req.Context()
+
 			if userIdHeader != "" {
-				ctx = user.WithId(ctx, userIdHeader)
+				u, err := deps.UserService.GetUserByUid(ctx, userIdHeader)
+				if err != nil {
+					if errors.Is(err, user.ErrUserNotFound) {
+						log.Debugf("user not found: %s", userIdHeader)
+						http.Error(w, "user not found", http.StatusForbidden)
+						return
+					} else {
+						log.Errorf("failed to get user: %v", err)
+						http.Error(w, err.Error(), http.StatusBadRequest)
+						return
+					}
+				} else {
+					ctx = user.WithId(ctx, u.Id)
+				}
 			}
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})

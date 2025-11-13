@@ -4,6 +4,7 @@ import "time"
 
 type User struct {
 	Id          int
+	Uid         string
 	Username    string
 	DisplayName string
 	PhotoUrl    string
