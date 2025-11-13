@@ -14,7 +14,7 @@ import (
 func setupServiceTest(t *testing.T) (*Service, context.Context) {
 	repo := setupTestRepository(t)
 	service := NewService(repo)
-	ctx := context.WithValue(context.Background(), user.UserIDKey, "1")
+	ctx := context.WithValue(context.Background(), user.UserIDKey, 1)
 	return service, ctx
 }
 

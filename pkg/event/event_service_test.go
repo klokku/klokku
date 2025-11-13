@@ -2,18 +2,19 @@ package event
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/klokku/klokku/internal/test_utils"
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/user"
-	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestStartNewEvent(t *testing.T) {
-	ctx := context.WithValue(context.Background(), user.UserIDKey, "1")
+	ctx := context.WithValue(context.Background(), user.UserIDKey, 1)
 	location, _ := time.LoadLocation("Europe/Warsaw")
 
 	t.Run("No existing event, successfully starts new event", func(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"github.com/klokku/klokku/pkg/user"
 )
 
-var ctx = context.WithValue(context.Background(), user.UserIDKey, "1")
+var ctx = context.WithValue(context.Background(), user.UserIDKey, 1)
 var calendarStub = calendar.NewStubCalendar()
 var budgetRepoStub = budget.NewStubBudgetRepo()
 var budgetRepoService = budget.NewBudgetServiceImpl(budgetRepoStub)
