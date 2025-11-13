@@ -31,6 +31,17 @@ func (s *StubUserRepository) GetUser(ctx context.Context, id int) (User, error) 
 	return user, nil
 }
 
+func (s *StubUserRepository) GetUserByUid(ctx context.Context, uid string) (User, error) {
+	var user User
+	for _, u := range s.data {
+		if u.Uid == uid {
+			user = u
+			break
+		}
+	}
+	return user, nil
+}
+
 func (s *StubUserRepository) UpdateUser(ctx context.Context, userId int, user User) (User, error) {
 	if _, ok := s.data[userId]; !ok {
 		return User{}, errors.New("user not found")
@@ -50,4 +61,13 @@ func (s *StubUserRepository) GetAllUsers(ctx context.Context) ([]User, error) {
 		users = append(users, user)
 	}
 	return users, nil
+}
+
+func (s *StubUserRepository) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
+	for _, user := range s.data {
+		if user.Username == username {
+			return false, nil
+		}
+	}
+	return true, nil
 }

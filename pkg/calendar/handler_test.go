@@ -34,12 +34,12 @@ var budgetProvider = func(ctx context.Context, includeInactive bool) ([]budget.B
 	}, nil
 }
 
-func contextWithUserId(ctx context.Context, userId string) context.Context {
+func contextWithUserId(ctx context.Context, userId int) context.Context {
 	return user.WithId(ctx, userId)
 }
 
 // A middleware that sets the user ID in the context
-func withUserID(userId string, next http.Handler) http.Handler {
+func withUserID(userId int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := contextWithUserId(r.Context(), userId)
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -55,7 +55,7 @@ func setupHandlerTest(t *testing.T) *Handler {
 }
 
 // Helper to add test events
-func addTestEvents(t *testing.T, handler *Handler, userId string, events []EventDTO) {
+func addTestEvents(t *testing.T, handler *Handler, userId int, events []EventDTO) {
 	ctx := contextWithUserId(context.Background(), userId)
 	for _, event := range events {
 		body, err := json.Marshal(event)
@@ -135,7 +135,7 @@ func TestGetEvents_Success(t *testing.T) {
 	// Setup
 	handler := setupHandlerTest(t)
 
-	userId := "123"
+	userId := 123
 	from := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
 
@@ -214,7 +214,7 @@ func TestGetEvents_EmptyResults(t *testing.T) {
 	// Setup
 	handler := setupHandlerTest(t)
 
-	userId := "123"
+	userId := 123
 	from := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2023, 1, 2, 0, 0, 0, 0, time.UTC)
 
@@ -266,7 +266,7 @@ func TestEventToDTO(t *testing.T) {
 func TestUpdateEvent(t *testing.T) {
 	// Setup
 	handler := setupHandlerTest(t)
-	userId := "123"
+	userId := 123
 
 	// 1. First create an event
 	startTime := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
@@ -382,7 +382,7 @@ func TestUpdateEvent(t *testing.T) {
 func TestDeleteEvent(t *testing.T) {
 	// Setup
 	handler := setupHandlerTest(t)
-	userId := "123"
+	userId := 123
 
 	// 1. First create an event
 	startTime := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
