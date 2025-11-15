@@ -16,6 +16,8 @@ func SetupMiddleware(r *mux.Router, deps *Dependencies, cfg config.Application) 
 	// Propagate X-User-Id header into context for downstream services
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			log.Debug("Propagating user ID header")
+
 			userIdHeader := req.Header.Get("X-User-Id")
 			ctx := req.Context()
 
@@ -32,9 +34,11 @@ func SetupMiddleware(r *mux.Router, deps *Dependencies, cfg config.Application) 
 						return
 					}
 				} else {
+					log.Debugf("user found: %s", u.Uid)
 					ctx = user.WithId(ctx, u.Id)
 				}
 			}
+			log.Debug("Propagated user ID header")
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
