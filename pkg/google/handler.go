@@ -24,7 +24,7 @@ func (h *Handler) ListCalendars(w http.ResponseWriter, r *http.Request) {
 	calendars, err := h.service.ListCalendars(r.Context())
 	if err != nil {
 		if errors.Is(err, ErrUnathenticated) {
-			w.WriteHeader(http.StatusUnauthorized)
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		w.WriteHeader(http.StatusInternalServerError)

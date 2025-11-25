@@ -61,7 +61,7 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	workspaces, err := h.client.GetAuthorizedWorkspaces(r.Context())
 	if err != nil {
 		if errors.Is(err, ErrUnathenticated) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			http.Error(w, "Unauthorized", http.StatusForbidden)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
