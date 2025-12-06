@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -353,7 +354,7 @@ func userToDTO(user *User) UserDTO {
 func settingsToDTO(settings Settings) SettingsDTO {
 	return SettingsDTO{
 		Timezone:          settings.Timezone,
-		WeekStartDay:      settings.WeekFirstDay.String(),
+		WeekStartDay:      strings.ToLower(settings.WeekFirstDay.String()),
 		EventCalendarType: settings.EventCalendarType,
 		GoogleCalendar: GoogleCalendarSettingsDTO{
 			CalendarId: settings.GoogleCalendar.CalendarId,
