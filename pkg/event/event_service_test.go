@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/klokku/klokku/internal/test_utils"
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/calendar"
@@ -23,7 +24,8 @@ func TestStartNewEvent(t *testing.T) {
 		clock := &utils.MockClock{FixedNow: time.Now().Truncate(time.Second)}
 		service := &EventServiceImpl{repo: repo, calendar: cal, clock: clock}
 
-		newEvent := Event{ID: 1, StartTime: clock.Now()}
+		uid := uuid.NewString()
+		newEvent := Event{UID: uid, StartTime: clock.Now()}
 
 		result, err := service.StartNewEvent(ctx, newEvent)
 		assert.NoError(t, err)
@@ -32,16 +34,15 @@ func TestStartNewEvent(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, newEvent, result)
-		assert.NotNil(t, newEvent.ID)
 		assert.Equal(t, &newEvent, currentEvent)
 	})
 
 	t.Run("Existing event present, finishes it and starts new event", func(t *testing.T) {
-		existingEvent := Event{ID: 2, StartTime: time.Now().Add(-1 * time.Hour)}
+		existingEvent := Event{UID: uuid.NewString(), StartTime: time.Now().Add(-1 * time.Hour)}
 		repo := &StubEventRepository{}
 		cal := calendar.NewStubCalendar()
 		service := &EventServiceImpl{repo: repo, calendar: cal, clock: &utils.MockClock{FixedNow: time.Now()}, userProvider: test_utils.TestUserProvider{}}
-		newEvent := Event{ID: 3, StartTime: time.Now()}
+		newEvent := Event{UID: uuid.NewString(), StartTime: time.Now()}
 
 		service.StartNewEvent(ctx, existingEvent)
 		result, err := service.StartNewEvent(ctx, newEvent)
@@ -50,7 +51,7 @@ func TestStartNewEvent(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, newEvent, result)
-		assert.Equal(t, newEvent.ID, currentEvent.ID)
+		assert.Equal(t, newEvent.UID, currentEvent.UID)
 	})
 
 	t.Run("Existing event present between days, split previous event", func(t *testing.T) {
@@ -62,9 +63,9 @@ func TestStartNewEvent(t *testing.T) {
 		cal := calendar.NewStubCalendar()
 		service := &EventServiceImpl{repo: repo, calendar: cal, clock: &utils.MockClock{FixedNow: now}, userProvider: test_utils.TestUserProvider{}}
 
-		previousEvent := Event{ID: 2, StartTime: beforeMidnight}
+		previousEvent := Event{UID: uuid.NewString(), StartTime: beforeMidnight}
 		service.StartNewEvent(ctx, previousEvent)
-		newEvent := Event{ID: 3, StartTime: now}
+		newEvent := Event{UID: uuid.NewString(), StartTime: now}
 		service.StartNewEvent(ctx, newEvent)
 
 		calEvents, err := cal.GetEvents(ctx, beforeMidnight.Add(-1*time.Hour), now.Add(time.Hour))
@@ -83,9 +84,9 @@ func TestStartNewEvent(t *testing.T) {
 		cal := calendar.NewStubCalendar()
 		service := &EventServiceImpl{repo: repo, calendar: cal, clock: &utils.MockClock{FixedNow: now}, userProvider: test_utils.TestUserProvider{}}
 
-		previousEvent := Event{ID: 2, StartTime: firstEventStart}
+		previousEvent := Event{UID: uuid.NewString(), StartTime: firstEventStart}
 		service.StartNewEvent(ctx, previousEvent)
-		newEvent := Event{ID: 3, StartTime: now}
+		newEvent := Event{UID: uuid.NewString(), StartTime: now}
 		service.StartNewEvent(ctx, newEvent)
 
 		calEvents, err := cal.GetEvents(ctx, firstEventStart.Add(-1*time.Hour), now.Add(time.Hour))
