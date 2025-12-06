@@ -3,15 +3,16 @@ package event
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"time"
+
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/pkg/budget"
 	log "github.com/sirupsen/logrus"
-	"net/http"
-	"time"
 )
 
 type EventDTO struct {
-	ID        int              `json:"id"`
+	UID       string           `json:"uid"`
 	Budget    budget.BudgetDTO `json:"budget"`
 	StartTime string           `json:"startTime"`
 	EndTime   string           `json:"endTime,omitempty"`
@@ -258,7 +259,7 @@ func eventToDTO(event Event) EventDTO {
 		endTime = event.EndTime.Format(time.RFC3339)
 	}
 	return EventDTO{
-		ID:        event.ID,
+		UID:       event.UID,
 		Budget:    budget.BudgetToDTO(event.Budget),
 		StartTime: event.StartTime.Format(time.RFC3339),
 		EndTime:   endTime,

@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type EventRepository interface {
@@ -40,21 +41,12 @@ func (bie *EventRepositoryImpl) StoreEvent(ctx context.Context, userId int, even
 		unixValue := event.EndTime.Unix()
 		endTimeUnix = &unixValue
 	}
-	result, err := stmt.ExecContext(ctx, event.Budget.ID, event.StartTime.Unix(), endTimeUnix, userId)
+	_, err = stmt.ExecContext(ctx, event.Budget.ID, event.StartTime.Unix(), endTimeUnix, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
 		return Event{}, err
 	}
-
-	lastInsertID, err := result.LastInsertId()
-	if err != nil {
-		err := fmt.Errorf("could not retrieve last insert id: %w", err)
-		log.Error(err)
-		return Event{}, err
-	}
-
-	event.ID = int(lastInsertID)
 
 	return event, nil
 }
@@ -72,8 +64,7 @@ func (bie *EventRepositoryImpl) DeleteCurrentEvent(ctx context.Context, userId i
 
 func (bie *EventRepositoryImpl) FindCurrentEvent(ctx context.Context, userId int) (*Event, error) {
 	query := `
-		SELECT e.id, e.budget_id, e.start_time,
-			   bi.name, bi.weekly_time
+		SELECT e.budget_id, e.start_time, bi.name, bi.weekly_time
 		FROM event e
 		JOIN budget bi ON e.budget_id = bi.id
 		WHERE e.end_time IS NULL AND e.user_id = ? LIMIT 1`
@@ -83,7 +74,7 @@ func (bie *EventRepositoryImpl) FindCurrentEvent(ctx context.Context, userId int
 	var event Event
 	var startTimeUnix int64
 	var weeklyTime int
-	err := row.Scan(&event.ID, &event.Budget.ID, &startTimeUnix, &event.Budget.Name, &weeklyTime)
+	err := row.Scan(&event.Budget.ID, &startTimeUnix, &event.Budget.Name, &weeklyTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

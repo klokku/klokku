@@ -3,12 +3,13 @@ package event
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 var ErrNoCurrentEvent = fmt.Errorf("no current event")
@@ -244,6 +245,7 @@ func (s *EventServiceImpl) GetLastPreviousEvents(ctx context.Context, limit int)
 
 func calendarEventToEvent(e calendar.Event) Event {
 	return Event{
+		UID: e.UID,
 		Budget: budget.Budget{
 			ID:   e.Metadata.BudgetId,
 			Name: e.Summary,
