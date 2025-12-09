@@ -12,24 +12,24 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/klokku/klokku/pkg/budget"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/stretchr/testify/assert"
 )
 
-var budgetProvider = func(ctx context.Context, includeInactive bool) ([]budget.Budget, error) {
-	return []budget.Budget{
+var budgetProvider = func(ctx context.Context, includeInactive bool) ([]budget_plan.BudgetItem, error) {
+	return []budget_plan.BudgetItem{
 		{
-			ID:   1,
-			Name: "Test Budget 1",
+			Id:   1,
+			Name: "Test BudgetItem 1",
 		},
 		{
-			ID:   2,
-			Name: "Test Budget 2",
+			Id:   2,
+			Name: "Test BudgetItem 2",
 		},
 		{
-			ID:   3,
-			Name: "Test Budget 3",
+			Id:   3,
+			Name: "Test BudgetItem 3",
 		},
 	}, nil
 }
@@ -142,20 +142,20 @@ func TestGetEvents_Success(t *testing.T) {
 	// Add sample events to the repository
 	events := []EventDTO{
 		{
-			Summary:   "Test Budget 1",
+			Summary:   "Test BudgetItem 1",
 			StartTime: from,
 			EndTime:   from.Add(1 * time.Hour),
 			BudgetId:  1,
 		},
 		{
-			Summary:   "Test Budget 2",
+			Summary:   "Test BudgetItem 2",
 			StartTime: to.Add(-2 * time.Hour),
 			EndTime:   to,
 			BudgetId:  2,
 		},
 		// Event outside the time range (should not be returned)
 		{
-			Summary:   "Test Budget 3",
+			Summary:   "Test BudgetItem 3",
 			StartTime: to.Add(1 * time.Hour),
 			EndTime:   to.Add(2 * time.Hour),
 			BudgetId:  3,
@@ -192,22 +192,22 @@ func TestGetEvents_Success(t *testing.T) {
 
 	for _, dto := range dtos {
 		switch dto.Summary {
-		case "Test Budget 1":
+		case "Test BudgetItem 1":
 			// Compare Unix timestamps instead of direct time comparison
-			assert.Equal(t, from.Unix(), dto.StartTime.Unix(), "Start time for Test Budget 1 should match")
+			assert.Equal(t, from.Unix(), dto.StartTime.Unix(), "Start time for Test BudgetItem 1 should match")
 			assert.Equal(t, from.Add(1*time.Hour).Unix(), dto.EndTime.Unix(), "End time for Event 1 should match")
 			assert.Equal(t, 1, dto.BudgetId)
 			foundEvent1 = true
-		case "Test Budget 2":
-			assert.Equal(t, to.Add(-2*time.Hour).Unix(), dto.StartTime.Unix(), "Start time for Test Budget 2 should match")
+		case "Test BudgetItem 2":
+			assert.Equal(t, to.Add(-2*time.Hour).Unix(), dto.StartTime.Unix(), "Start time for Test BudgetItem 2 should match")
 			assert.Equal(t, to.Unix(), dto.EndTime.Unix(), "End time for Event 2 should match")
 			assert.Equal(t, 2, dto.BudgetId)
 			foundEvent2 = true
 		}
 	}
 
-	assert.True(t, foundEvent1, "Test Budget 1 should be in the response")
-	assert.True(t, foundEvent2, "Test Budget 2 should be in the response")
+	assert.True(t, foundEvent1, "Test BudgetItem 1 should be in the response")
+	assert.True(t, foundEvent2, "Test BudgetItem 2 should be in the response")
 }
 
 func TestGetEvents_EmptyResults(t *testing.T) {
@@ -301,7 +301,7 @@ func TestUpdateEvent(t *testing.T) {
 	assert.NotEmpty(t, createdEvent.UID, "Created event should have a UID")
 
 	// 2. Now update the event
-	updatedSummary := "Test Budget 2"
+	updatedSummary := "Test BudgetItem 2"
 	updatedStartTime := time.Date(2025, 1, 1, 14, 0, 0, 0, time.UTC) // Changed from 10:00 to 14:00
 	updatedEndTime := time.Date(2025, 1, 1, 16, 0, 0, 0, time.UTC)   // Changed from 11:00 to 16:00
 	updatedBudgetId := 2                                             // Changed from 1 to 2

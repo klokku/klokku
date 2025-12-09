@@ -7,12 +7,19 @@ import (
 
 // RegisterRoutes registers all API endpoints.
 func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
-	// Budget
-	r.HandleFunc("/api/budget", deps.BudgetHandler.GetAll).Methods("GET")
-	r.HandleFunc("/api/budget", deps.BudgetHandler.Register).Methods("POST")
-	r.HandleFunc("/api/budget/{id}", deps.BudgetHandler.Update).Methods("PUT")
-	r.HandleFunc("/api/budget/{id}/position", deps.BudgetHandler.SetPosition).Methods("PUT")
-	r.HandleFunc("/api/budget/{id}", deps.BudgetHandler.Delete).Methods("DELETE")
+
+	// Budget Plan
+	r.HandleFunc("/api/budgetplan", deps.BudgetPlanHandler.ListPlans).Methods("GET")
+	r.HandleFunc("/api/budgetplan", deps.BudgetPlanHandler.CreatePlan).Methods("POST")
+	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.GetPlan).Methods("GET")
+	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.UpdatePlan).Methods("PUT")
+	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.DeletePlan).Methods("DELETE")
+
+	// Budget Item
+	r.HandleFunc("/api/budgetplan/{planId}/item", deps.BudgetPlanHandler.RegisterItem).Methods("POST")
+	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.UpdateItem).Methods("PUT")
+	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}/position", deps.BudgetPlanHandler.SetItemPosition).Methods("PUT")
+	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.DeleteItem).Methods("DELETE")
 
 	// Budget Override
 	r.HandleFunc("/api/budget/override", deps.BudgetOverrideHandler.GetOverrides).Queries("startDate", "{startDate}").Methods("GET")

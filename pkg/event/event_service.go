@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
@@ -129,7 +129,7 @@ func prepareEventsForCalendar(event *Event, endTime time.Time, userTimezone stri
 		StartTime: event.StartTime,
 		EndTime:   endTime,
 		Metadata: calendar.EventMetadata{
-			BudgetId: event.Budget.ID,
+			BudgetId: event.Budget.Id,
 		},
 	}
 
@@ -246,8 +246,8 @@ func (s *EventServiceImpl) GetLastPreviousEvents(ctx context.Context, limit int)
 func calendarEventToEvent(e calendar.Event) Event {
 	return Event{
 		UID: e.UID,
-		Budget: budget.Budget{
-			ID:   e.Metadata.BudgetId,
+		Budget: budget_plan.BudgetItem{
+			Id:   e.Metadata.BudgetId,
 			Name: e.Summary,
 		},
 		StartTime: e.StartTime,

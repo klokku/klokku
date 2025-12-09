@@ -1,23 +1,23 @@
 package stats
 
 import (
-	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"testing"
 	"time"
 )
 
 var startDate = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 var endDate = time.Date(2024, 1, 7, 0, 0, 0, 0, time.UTC)
-var budget1 = budget.Budget{
-	ID:         1,
-	Name:       "Budget 1",
-	WeeklyTime: time.Duration(300) * time.Minute,
+var budget1 = budget_plan.BudgetItem{
+	Id:             1,
+	Name:           "BudgetItem 1",
+	WeeklyDuration: time.Duration(300) * time.Minute,
 }
-var budget2 = budget.Budget{
-	ID:         2,
-	Name:       "Budget 2",
-	WeeklyTime: time.Duration(240) * time.Minute,
+var budget2 = budget_plan.BudgetItem{
+	Id:             2,
+	Name:           "BudgetItem 2",
+	WeeklyDuration: time.Duration(240) * time.Minute,
 }
 var budget1Override = budget_override.BudgetOverride{
 	ID:         234,
@@ -94,7 +94,7 @@ func TestCsvStatsRendererImpl_RenderStats(t1 *testing.T) {
 					TotalRemaining: time.Duration(240+300-300) * time.Minute,
 				},
 			},
-			want: ",Budget 1,Budget 2,SUM\n" +
+			want: ",BudgetItem 1,BudgetItem 2,SUM\n" +
 				"Planned weekly,05:00:00,04:00:00,09:00:00\n" +
 				"01/01/2024,00:30:00,01:00:00,01:30:00\n" +
 				"02/01/2024,01:30:00,02:00:00,03:30:00\n" +
@@ -156,7 +156,7 @@ func TestCsvStatsRendererImpl_RenderStats(t1 *testing.T) {
 					TotalRemaining: time.Duration(150+360-300) * time.Minute,
 				},
 			},
-			want: ",Budget 1,Budget 2,SUM\n" +
+			want: ",BudgetItem 1,BudgetItem 2,SUM\n" +
 				"Planned weekly,02:30:00,06:00:00,08:30:00\n" +
 				"01/01/2024,00:30:00,01:00:00,01:30:00\n" +
 				"02/01/2024,01:30:00,02:00:00,03:30:00\n" +

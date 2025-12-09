@@ -4,6 +4,8 @@ import (
 	"time"
 )
 
+// TODO replace with the WeeklyPlanItem
+
 type BudgetOverride struct {
 	ID int
 	// BudgetID is the unique identifier of the related budget.

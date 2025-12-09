@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/event"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
@@ -20,7 +20,7 @@ type StatsService interface {
 type StatsServiceImpl struct {
 	eventService       event.EventService
 	eventStatsService  event.EventStatsService
-	budgetRepo         budget.BudgetRepo
+	budgetRepo         budget_plan.Repository
 	budgetOverrideRepo budget_override.BudgetOverrideRepo
 	clock              utils.Clock
 }
@@ -28,7 +28,7 @@ type StatsServiceImpl struct {
 func NewStatsServiceImpl(
 	eventService event.EventService,
 	eventStatsService event.EventStatsService,
-	budgetRepo budget.BudgetRepo,
+	budgetRepo budget_plan.Repository,
 	budgetOverrideRepo budget_override.BudgetOverrideRepo,
 ) *StatsServiceImpl {
 	return &StatsServiceImpl{
@@ -45,14 +45,14 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	if err != nil {
 		return StatsSummary{}, fmt.Errorf("failed to get current user: %w", err)
 	}
-	budgets, err := s.budgetRepo.GetAll(ctx, userId, true)
+	budgets, err := s.budgetRepo.GetPlan(ctx, userId, true)
 	if err != nil {
 		return StatsSummary{}, err
 	}
 	log.Tracef("Budgets: %v", budgets)
 
 	// filter out inactive budgets
-	activeBudgets := make([]budget.Budget, 0, len(budgets))
+	activeBudgets := make([]budget_plan.BudgetItem, 0, len(budgets))
 	for _, b := range budgets {
 		if b.IsActiveBetween(from, to) {
 			activeBudgets = append(activeBudgets, b)
@@ -63,15 +63,15 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	if err != nil {
 		return StatsSummary{}, err
 	}
-	log.Tracef("Budget overrides: %v", overridesByBudgetId)
+	log.Tracef("BudgetItem overrides: %v", overridesByBudgetId)
 
 	totalPlanned := time.Duration(0)
 	for _, b := range activeBudgets {
-		budgetTime := b.WeeklyTime
-		if overridesByBudgetId[b.ID] != nil {
-			budgetTime = overridesByBudgetId[b.ID].WeeklyTime
+		budgetTime := b.WeeklyDuration
+		if overridesByBudgetId[b.Id] != nil {
+			budgetTime = overridesByBudgetId[b.Id].WeeklyTime
 		}
-		log.Debugf("Budget: %v, Time: %v, TimeWithOverride: %v", b.Name, b.WeeklyTime, budgetTime)
+		log.Debugf("BudgetItem: %v, Time: %v, TimeWithOverride: %v", b.Name, b.WeeklyDuration, budgetTime)
 		totalPlanned += budgetTime
 	}
 
@@ -84,7 +84,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 			log.Warnf("Unable to find current event: %v. Stats will not include current event.", err)
 		}
 		if currentEvent != nil {
-			currentEventBudgetId = currentEvent.Budget.ID
+			currentEventBudgetId = currentEvent.Budget.Id
 			currentEventTime = s.clock.Now().Sub(currentEvent.StartTime)
 		}
 	}
@@ -139,7 +139,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 }
 
 func prepareStatsByBudget(
-	budgets []budget.Budget,
+	budgets []budget_plan.BudgetItem,
 	overridesByBudgetId map[int]*budget_override.BudgetOverride,
 	durationByBudgetId map[int]time.Duration,
 	currentEventBudgetId int,
@@ -148,10 +148,10 @@ func prepareStatsByBudget(
 
 	statsByBudget := make([]BudgetStats, 0, len(budgets))
 	for _, b := range budgets {
-		budgetDuration := durationByBudgetId[b.ID]
-		budgetOverride := overridesByBudgetId[b.ID]
+		budgetDuration := durationByBudgetId[b.Id]
+		budgetOverride := overridesByBudgetId[b.Id]
 		budgetCurrentEventTime := time.Duration(0)
-		if b.ID == currentEventBudgetId {
+		if b.Id == currentEventBudgetId {
 			budgetCurrentEventTime = currentEventTime
 		}
 
@@ -167,11 +167,11 @@ func prepareStatsByBudget(
 }
 
 func calculateRemainingDuration(
-	budget *budget.Budget,
+	budget *budget_plan.BudgetItem,
 	override *budget_override.BudgetOverride,
 	duration time.Duration,
 ) time.Duration {
-	weeklyTime := budget.WeeklyTime
+	weeklyTime := budget.WeeklyDuration
 	if override != nil {
 		weeklyTime = override.WeeklyTime
 	}

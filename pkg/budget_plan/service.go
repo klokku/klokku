@@ -1,0 +1,197 @@
+package budget_plan
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/klokku/klokku/pkg/user"
+	log "github.com/sirupsen/logrus"
+)
+
+type BudgetPlanService interface {
+	GetPlan(ctx context.Context, planId int) (BudgetPlan, error)
+	ListPlans(ctx context.Context) ([]BudgetPlan, error)
+	CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
+	UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
+	DeletePlan(ctx context.Context, planId int) (bool, error)
+	CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error)
+	MoveItemAfter(ctx context.Context, planId, itemId, precedingId int) (bool, error)
+	UpdateItem(ctx context.Context, budget BudgetItem) (bool, error)
+	DeleteItem(ctx context.Context, id int) (bool, error)
+}
+
+type BudgetPlanServiceImpl struct {
+	repo Repository
+}
+
+func NewBudgetServiceImpl(repo Repository) *BudgetPlanServiceImpl {
+	return &BudgetPlanServiceImpl{repo: repo}
+}
+
+func (s *BudgetPlanServiceImpl) GetPlan(ctx context.Context, planId int) (BudgetPlan, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return s.repo.GetPlan(ctx, userId, planId)
+}
+
+func (s *BudgetPlanServiceImpl) ListPlans(ctx context.Context) ([]BudgetPlan, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return s.repo.ListPlans(ctx, userId)
+}
+
+func (s *BudgetPlanServiceImpl) CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	plans, err := s.ListPlans(ctx)
+	if err != nil {
+		return BudgetPlan{}, err
+	}
+	if len(plans) == 0 {
+
+	}
+	return s.repo.CreatePlan(ctx, userId, plan)
+}
+
+func (s *BudgetPlanServiceImpl) UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	updatedPlan, err := s.repo.UpdatePlan(ctx, userId, plan)
+	if err != nil {
+		return BudgetPlan{}, err
+	}
+	return updatedPlan, nil
+}
+
+func (s *BudgetPlanServiceImpl) DeletePlan(ctx context.Context, planId int) (bool, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return s.repo.DeletePlan(ctx, userId, planId)
+}
+
+func (s *BudgetPlanServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetItem{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	maxPosition, err := s.repo.FindMaxPlanItemPosition(ctx, userId, budget.PlanId)
+	if err != nil {
+		return BudgetItem{}, err
+	}
+	budget.Position = maxPosition + 100
+
+	id, err := s.repo.StoreItem(ctx, userId, budget)
+	if err != nil {
+		return BudgetItem{}, err
+	}
+	budget.Id = id
+
+	return budget, nil
+}
+
+func (s *BudgetPlanServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	updated, err := s.repo.UpdateItem(ctx, userId, budget)
+	if err != nil {
+		return false, err
+	}
+	if !updated {
+		log.Warnf("item not updated, probably because it does not exist (%d) or the user (%d) is not the owner", budget.Id, userId)
+		return false, fmt.Errorf("item not updated")
+	}
+	return true, nil
+}
+
+func (s *BudgetPlanServiceImpl) DeleteItem(ctx context.Context, id int) (bool, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	deleted, err := s.repo.DeleteItem(ctx, userId, id)
+	if err != nil {
+		return false, err
+	}
+	if !deleted {
+		log.Warnf("item not deleted, probably because it does not exist (%d) or the user (%d) is not the owner", id, userId)
+		return false, fmt.Errorf("item not deleted")
+	}
+	return true, nil
+}
+
+func (s *BudgetPlanServiceImpl) MoveItemAfter(ctx context.Context, planId int, itemId int, precedingId int) (bool, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current user: %w", err)
+	}
+	plan, err := s.repo.GetPlan(ctx, userId, planId)
+	if err != nil {
+		return false, err
+	}
+
+	items := plan.Items
+	newPos := 0
+	prevPos, nextPos := findPreviousAndNextPositions(precedingId, items)
+	if nextPos == -1 {
+		newPos = prevPos + 100
+	} else if nextPos-prevPos > 1 {
+		newPos = prevPos + ((nextPos - prevPos) / 2)
+	} else { // no space between prev and next - reorder all items
+		prevIdx := findItem(precedingId, items)
+		newItems := append(items[:prevIdx], append([]BudgetItem{items[findItem(itemId, items)]}, items[prevIdx+1:]...)...)
+		err := s.reorderItems(ctx, userId, newItems)
+		if err != nil {
+			return false, err
+		}
+	}
+	budgetToMove := items[findItem(itemId, items)]
+	budgetToMove.Position = newPos
+	return s.repo.UpdateItemPosition(ctx, userId, budgetToMove)
+}
+
+func (s *BudgetPlanServiceImpl) reorderItems(ctx context.Context, userId int, items []BudgetItem) error {
+	for i, item := range items {
+		item.Position = (i + 1) * 100
+		_, err := s.repo.UpdateItemPosition(ctx, userId, item)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func findPreviousAndNextPositions(previousId int, items []BudgetItem) (int, int) {
+	previousItemIdx := findItem(previousId, items)
+	if previousItemIdx == -1 {
+		return 0, items[0].Position
+	}
+	previousItemPos := items[previousItemIdx].Position
+	if previousItemIdx == len(items)-1 { // it is the last one
+		return previousItemPos, -1
+	}
+	nextItemPos := items[previousItemIdx+1].Position
+	return previousItemPos, nextItemPos
+}
+
+func findItem(id int, items []BudgetItem) int {
+	for idx, item := range items {
+		if item.Id == id {
+			return idx
+		}
+	}
+	return -1
+}

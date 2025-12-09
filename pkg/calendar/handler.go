@@ -8,7 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/rest"
-	"github.com/klokku/klokku/pkg/budget"
+	"github.com/klokku/klokku/pkg/budget_plan"
 )
 
 type Handler struct {
@@ -16,7 +16,7 @@ type Handler struct {
 	budgetsProvider BudgetsProviderFunc
 }
 
-type BudgetsProviderFunc func(ctx context.Context, includeInactive bool) ([]budget.Budget, error)
+type BudgetsProviderFunc func(ctx context.Context, includeInactive bool) ([]budget_plan.BudgetItem, error)
 
 type EventDTO struct {
 	UID       string    `json:"uid"`
@@ -100,9 +100,9 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var budgetInfo *budget.Budget
+	var budgetInfo *budget_plan.BudgetItem
 	for _, b := range budgets {
-		if b.ID == event.Metadata.BudgetId {
+		if b.Id == event.Metadata.BudgetId {
 			budgetInfo = &b
 			break
 		}
@@ -149,9 +149,9 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var budgetInfo *budget.Budget
+	var budgetInfo *budget_plan.BudgetItem
 	for _, b := range budgets {
-		if b.ID == event.Metadata.BudgetId {
+		if b.Id == event.Metadata.BudgetId {
 			budgetInfo = &b
 			break
 		}

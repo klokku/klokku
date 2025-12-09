@@ -7,16 +7,16 @@ import (
 	"time"
 
 	"github.com/klokku/klokku/internal/rest"
-	"github.com/klokku/klokku/pkg/budget"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	log "github.com/sirupsen/logrus"
 )
 
 type EventDTO struct {
-	UID       string           `json:"uid"`
-	Budget    budget.BudgetDTO `json:"budget"`
-	StartTime string           `json:"startTime"`
-	EndTime   string           `json:"endTime,omitempty"`
-	Notes     string           `json:"notes,omitempty"`
+	UID       string              `json:"uid"`
+	Budget    budget_plan.ItemDTO `json:"budget"`
+	StartTime string              `json:"startTime"`
+	EndTime   string              `json:"endTime,omitempty"`
+	Notes     string              `json:"notes,omitempty"`
 }
 
 type EventUpdateRequest struct {
@@ -73,8 +73,8 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	event := &Event{
-		Budget: budget.Budget{
-			ID: startEventRequest.BudgetId,
+		Budget: budget_plan.BudgetItem{
+			Id: startEventRequest.BudgetId,
 		},
 		StartTime: startTime,
 	}
@@ -260,7 +260,7 @@ func eventToDTO(event Event) EventDTO {
 	}
 	return EventDTO{
 		UID:       event.UID,
-		Budget:    budget.BudgetToDTO(event.Budget),
+		Budget:    budget_plan.ItemToDTO(event.Budget),
 		StartTime: event.StartTime.Format(time.RFC3339),
 		EndTime:   endTime,
 		Notes:     "",

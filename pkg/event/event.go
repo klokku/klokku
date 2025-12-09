@@ -3,12 +3,12 @@ package event
 import (
 	"time"
 
-	"github.com/klokku/klokku/pkg/budget"
+	"github.com/klokku/klokku/pkg/budget_plan"
 )
 
 type Event struct {
 	UID       string
-	Budget    budget.Budget
+	Budget    budget_plan.BudgetItem
 	StartTime time.Time
 	EndTime   time.Time
 }

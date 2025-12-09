@@ -26,7 +26,7 @@ func (t *CsvStatsRendererImpl) RenderStats(stats StatsSummary) (string, error) {
 	budgetNames = append(budgetNames, "")
 	for _, budgetStats := range stats.Budgets {
 		budgetNames = append(budgetNames, budgetStats.Budget.Name)
-		weeklyTime := budgetStats.Budget.WeeklyTime
+		weeklyTime := budgetStats.Budget.WeeklyDuration
 		if budgetStats.BudgetOverride != nil {
 			weeklyTime = budgetStats.BudgetOverride.WeeklyTime
 		}

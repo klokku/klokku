@@ -3,7 +3,7 @@ package stats
 import (
 	"encoding/json"
 	"github.com/klokku/klokku/internal/rest"
-	"github.com/klokku/klokku/pkg/budget"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"net/http"
 	"time"
 )
@@ -15,10 +15,10 @@ type DailyStatsDTO struct {
 }
 
 type BudgetStatsDTO struct {
-	Budget         budget.BudgetDTO   `json:"budget"`
-	BudgetOverride *BudgetOverrideDTO `json:"budgetOverride,omitempty"`
-	Duration       int                `json:"duration"`
-	Remaining      int                `json:"remaining"`
+	Budget         budget_plan.ItemDTO `json:"budget"`
+	BudgetOverride *BudgetOverrideDTO  `json:"budgetOverride,omitempty"`
+	Duration       int                 `json:"duration"`
+	Remaining      int                 `json:"remaining"`
 }
 
 type BudgetOverrideDTO struct {
@@ -111,7 +111,7 @@ func convertToJsonResponse(stats *StatsSummary) *StatsSummaryDTO {
 	budgetStats := make([]BudgetStatsDTO, 0, len(stats.Budgets))
 	for _, budgetStat := range stats.Budgets {
 		budgetStatsDTO := BudgetStatsDTO{
-			Budget:    budget.BudgetToDTO(budgetStat.Budget),
+			Budget:    budget_plan.ItemToDTO(budgetStat.Budget),
 			Duration:  int(budgetStat.Duration.Seconds()),
 			Remaining: int(budgetStat.Remaining.Seconds()),
 		}
@@ -136,7 +136,7 @@ func convertToJsonResponse(stats *StatsSummary) *StatsSummaryDTO {
 		}
 		for _, dayBudget := range day.Budgets {
 			budgetStatsDTO := BudgetStatsDTO{
-				Budget:    budget.BudgetToDTO(dayBudget.Budget),
+				Budget:    budget_plan.ItemToDTO(dayBudget.Budget),
 				Duration:  int(dayBudget.Duration.Seconds()),
 				Remaining: int(dayBudget.Remaining.Seconds()),
 			}

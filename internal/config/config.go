@@ -35,7 +35,12 @@ type Google struct {
 }
 
 type Database struct {
-	SqlitePath string `koanf:"sqlitepath"`
+	Host   string `koanf:"host"`
+	Port   int    `koanf:"port"`
+	User   string `koanf:"user"`
+	Pass   string `koanf:"pass"`
+	Name   string `koanf:"name"`
+	Schema string `koanf:"schema"`
 }
 
 func Load(path string) (Application, error) {
@@ -47,7 +52,12 @@ func Load(path string) (Application, error) {
 			Enabled: true,
 		},
 		Database: Database{
-			SqlitePath: "./storage/klokku-data.db?_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL&_cache_size=1000000",
+			Host:   "localhost",
+			Port:   5432,
+			User:   "klokku",
+			Pass:   "",
+			Name:   "klokku",
+			Schema: "klokku",
 		},
 	}, "koanf"), nil)
 	if err != nil {

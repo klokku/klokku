@@ -3,10 +3,11 @@ package app
 import (
 	"database/sql"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/calendar_provider"
 	"github.com/klokku/klokku/pkg/clickup"
@@ -25,9 +26,9 @@ type Dependencies struct {
 	GoogleService google.Service
 	GoogleHandler *google.Handler
 
-	BudgetRepo            budget.BudgetRepo
-	BudgetService         *budget.BudgetServiceImpl
-	BudgetHandler         *budget.BudgetHandler
+	BudgetRepo            budget_plan.Repository
+	BudgetService         *budget_plan.BudgetPlanServiceImpl
+	BudgetPlanHandler     *budget_plan.Handler
 	BudgetOverrideRepo    budget_override.BudgetOverrideRepo
 	BudgetOverrideService *budget_override.BudgetOverrideServiceImpl
 	BudgetOverrideHandler *budget_override.BudgetOverrideHandler
@@ -58,7 +59,7 @@ type Dependencies struct {
 }
 
 // BuildDependencies initializes and wires all application services and handlers.
-func BuildDependencies(db *sql.DB, cfg config.Application) *Dependencies {
+func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps := &Dependencies{}
 
 	deps.UserService = user.NewUserService(user.NewUserRepo(db))
@@ -68,16 +69,16 @@ func BuildDependencies(db *sql.DB, cfg config.Application) *Dependencies {
 	deps.GoogleService = google.NewService(deps.GoogleAuth)
 	deps.GoogleHandler = google.NewHandler(deps.GoogleService)
 
-	deps.BudgetRepo = budget.NewBudgetRepo(db)
-	deps.BudgetService = budget.NewBudgetServiceImpl(deps.BudgetRepo)
-	deps.BudgetHandler = budget.NewBudgetHandler(deps.BudgetService)
+	deps.BudgetRepo = budget_plan.NewBudgetRepo(db)
+	deps.BudgetService = budget_plan.NewBudgetServiceImpl(deps.BudgetRepo)
+	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetService)
 	deps.BudgetOverrideRepo = budget_override.NewBudgetOverrideRepo(db)
 	deps.BudgetOverrideService = budget_override.NewBudgetOverrideService(deps.BudgetOverrideRepo)
 	deps.BudgetOverrideHandler = budget_override.NewBudgetOverrideHandler(deps.BudgetOverrideService)
 
 	deps.KlokkuCalendarRepository = calendar.NewRepository(db)
 	deps.KlokkuCalendarService = calendar.NewService(deps.KlokkuCalendarRepository)
-	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService, deps.BudgetService.GetAll)
+	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService, deps.BudgetService.GetPlan)
 
 	deps.CalendarProvider = calendar_provider.NewCalendarProvider(deps.UserService, deps.GoogleService, deps.KlokkuCalendarService)
 	deps.CalendarMigrator = calendar_provider.NewEventsMigratorImpl(deps.CalendarProvider)

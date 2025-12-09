@@ -1,8 +1,8 @@
 package stats
 
 import (
-	"github.com/klokku/klokku/pkg/budget"
 	"github.com/klokku/klokku/pkg/budget_override"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"time"
 )
 
@@ -13,7 +13,7 @@ type DailyStats struct {
 }
 
 type BudgetStats struct {
-	Budget         budget.Budget
+	Budget         budget_plan.BudgetItem
 	BudgetOverride *budget_override.BudgetOverride
 	Duration       time.Duration
 	Remaining      time.Duration

@@ -13,7 +13,7 @@ COPY . .
 RUN go build -o klokku .
 
 # Stage 2: Create a minimal runtime image
-FROM alpine:latest
+FROM alpine:3.23 AS prod
 
 LABEL authors="jozala"
 
@@ -32,7 +32,7 @@ COPY migrations /app/migrations
 # Copy the frontend from working dir
 COPY frontend /app/frontend
 
-EXPOSE 8181
+EXPOSE ${PORT}
 
 # Set application default log level to warning
 ENV LOG_LEVEL=warn

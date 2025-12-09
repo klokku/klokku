@@ -41,7 +41,7 @@ func (bie *EventRepositoryImpl) StoreEvent(ctx context.Context, userId int, even
 		unixValue := event.EndTime.Unix()
 		endTimeUnix = &unixValue
 	}
-	_, err = stmt.ExecContext(ctx, event.Budget.ID, event.StartTime.Unix(), endTimeUnix, userId)
+	_, err = stmt.ExecContext(ctx, event.Budget.Id, event.StartTime.Unix(), endTimeUnix, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
@@ -74,7 +74,7 @@ func (bie *EventRepositoryImpl) FindCurrentEvent(ctx context.Context, userId int
 	var event Event
 	var startTimeUnix int64
 	var weeklyTime int
-	err := row.Scan(&event.Budget.ID, &startTimeUnix, &event.Budget.Name, &weeklyTime)
+	err := row.Scan(&event.Budget.Id, &startTimeUnix, &event.Budget.Name, &weeklyTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -92,7 +92,7 @@ func (bie *EventRepositoryImpl) FindCurrentEvent(ctx context.Context, userId int
 		log.Error(err)
 		return nil, err
 	}
-	event.Budget.WeeklyTime = time.Duration(weeklyTime) * time.Second
+	event.Budget.WeeklyDuration = time.Duration(weeklyTime) * time.Second
 
 	return &event, nil
 }
