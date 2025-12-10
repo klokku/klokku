@@ -28,10 +28,10 @@ type ItemDTO struct {
 }
 
 type Handler struct {
-	service BudgetPlanService
+	service Service
 }
 
-func NewBudgetPlanHandler(service BudgetPlanService) *Handler {
+func NewBudgetPlanHandler(service Service) *Handler {
 	return &Handler{service}
 }
 

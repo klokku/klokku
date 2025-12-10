@@ -16,6 +16,7 @@ func (s *RepositoryStub) CreatePlan(ctx context.Context, userId int, plan Budget
 	plan.Id = s.nextId
 	if len(s.plans) == 0 {
 		s.currentPlanId = plan.Id
+		plan.IsCurrent = true
 	}
 	if s.currentPlanId != plan.Id {
 		plan.IsCurrent = false

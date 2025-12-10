@@ -8,7 +8,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type BudgetPlanService interface {
+type Service interface {
 	GetPlan(ctx context.Context, planId int) (BudgetPlan, error)
 	ListPlans(ctx context.Context) ([]BudgetPlan, error)
 	CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
@@ -20,15 +20,15 @@ type BudgetPlanService interface {
 	DeleteItem(ctx context.Context, id int) (bool, error)
 }
 
-type BudgetPlanServiceImpl struct {
+type ServiceImpl struct {
 	repo Repository
 }
 
-func NewBudgetServiceImpl(repo Repository) *BudgetPlanServiceImpl {
-	return &BudgetPlanServiceImpl{repo: repo}
+func NewBudgetPlanServiceImpl(repo Repository) *ServiceImpl {
+	return &ServiceImpl{repo: repo}
 }
 
-func (s *BudgetPlanServiceImpl) GetPlan(ctx context.Context, planId int) (BudgetPlan, error) {
+func (s *ServiceImpl) GetPlan(ctx context.Context, planId int) (BudgetPlan, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
@@ -36,7 +36,7 @@ func (s *BudgetPlanServiceImpl) GetPlan(ctx context.Context, planId int) (Budget
 	return s.repo.GetPlan(ctx, userId, planId)
 }
 
-func (s *BudgetPlanServiceImpl) ListPlans(ctx context.Context) ([]BudgetPlan, error) {
+func (s *ServiceImpl) ListPlans(ctx context.Context) ([]BudgetPlan, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
@@ -44,22 +44,15 @@ func (s *BudgetPlanServiceImpl) ListPlans(ctx context.Context) ([]BudgetPlan, er
 	return s.repo.ListPlans(ctx, userId)
 }
 
-func (s *BudgetPlanServiceImpl) CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
+func (s *ServiceImpl) CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
 	}
-	plans, err := s.ListPlans(ctx)
-	if err != nil {
-		return BudgetPlan{}, err
-	}
-	if len(plans) == 0 {
-
-	}
 	return s.repo.CreatePlan(ctx, userId, plan)
 }
 
-func (s *BudgetPlanServiceImpl) UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
+func (s *ServiceImpl) UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
@@ -71,7 +64,7 @@ func (s *BudgetPlanServiceImpl) UpdatePlan(ctx context.Context, plan BudgetPlan)
 	return updatedPlan, nil
 }
 
-func (s *BudgetPlanServiceImpl) DeletePlan(ctx context.Context, planId int) (bool, error) {
+func (s *ServiceImpl) DeletePlan(ctx context.Context, planId int) (bool, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get current user: %w", err)
@@ -79,7 +72,7 @@ func (s *BudgetPlanServiceImpl) DeletePlan(ctx context.Context, planId int) (boo
 	return s.repo.DeletePlan(ctx, userId, planId)
 }
 
-func (s *BudgetPlanServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {
+func (s *ServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return BudgetItem{}, fmt.Errorf("failed to get current user: %w", err)
@@ -99,7 +92,7 @@ func (s *BudgetPlanServiceImpl) CreateItem(ctx context.Context, budget BudgetIte
 	return budget, nil
 }
 
-func (s *BudgetPlanServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, error) {
+func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get current user: %w", err)
@@ -116,7 +109,7 @@ func (s *BudgetPlanServiceImpl) UpdateItem(ctx context.Context, budget BudgetIte
 	return true, nil
 }
 
-func (s *BudgetPlanServiceImpl) DeleteItem(ctx context.Context, id int) (bool, error) {
+func (s *ServiceImpl) DeleteItem(ctx context.Context, id int) (bool, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get current user: %w", err)
@@ -133,7 +126,7 @@ func (s *BudgetPlanServiceImpl) DeleteItem(ctx context.Context, id int) (bool, e
 	return true, nil
 }
 
-func (s *BudgetPlanServiceImpl) MoveItemAfter(ctx context.Context, planId int, itemId int, precedingId int) (bool, error) {
+func (s *ServiceImpl) MoveItemAfter(ctx context.Context, planId int, itemId int, precedingId int) (bool, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get current user: %w", err)
@@ -163,7 +156,7 @@ func (s *BudgetPlanServiceImpl) MoveItemAfter(ctx context.Context, planId int, i
 	return s.repo.UpdateItemPosition(ctx, userId, budgetToMove)
 }
 
-func (s *BudgetPlanServiceImpl) reorderItems(ctx context.Context, userId int, items []BudgetItem) error {
+func (s *ServiceImpl) reorderItems(ctx context.Context, userId int, items []BudgetItem) error {
 	for i, item := range items {
 		item.Position = (i + 1) * 100
 		_, err := s.repo.UpdateItemPosition(ctx, userId, item)

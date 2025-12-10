@@ -10,7 +10,6 @@ import (
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/database"
 	log "github.com/sirupsen/logrus"
-	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -34,7 +33,6 @@ func preparePostgresContainer() (*postgres.PostgresContainer, error) {
 		postgres.WithPassword(dbPassword),
 		postgres.BasicWaitStrategies(),
 	)
-
 	if err != nil {
 		log.Printf("failed to start container: %s", err)
 		return nil, err
@@ -43,7 +41,7 @@ func preparePostgresContainer() (*postgres.PostgresContainer, error) {
 }
 
 // TestWithDB set up a Postgre instance and applies all migrations
-func TestWithDB() (*pgx.Conn, func()) {
+func TestWithDB() (*postgres.PostgresContainer, func() *pgx.Conn) {
 	ctx := context.Background()
 
 	container, err := preparePostgresContainer()
@@ -72,17 +70,19 @@ func TestWithDB() (*pgx.Conn, func()) {
 		log.Fatalf("Failed to apply migrations: %v", err)
 	}
 
-	db, err := database.Open(cfg)
+	err = container.Snapshot(ctx, postgres.WithSnapshotName("postgres-test-snapshot"))
 	if err != nil {
-		log.Fatalf("Failed to open database connection: %v", err)
+		log.Fatalf("Failed to snapshot postgres container: %v", err)
 		os.Exit(1)
 	}
 
-	return db, func() {
-		db.Close(ctx)
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			log.Printf("failed to terminate container: %s", err)
+	return container, func() *pgx.Conn {
+		db, err := database.Open(cfg)
+		if err != nil {
+			log.Fatalf("Failed to open database connection: %v", err)
+			os.Exit(1)
 		}
+		return db
 	}
 }
 

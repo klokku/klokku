@@ -335,6 +335,9 @@ func (bi RepositoryImpl) DeletePlan(ctx context.Context, userId int, planId int)
 		return false, err
 	}
 	rowsAffected := result.RowsAffected()
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("could not commit transaction: %w", err)
+	}
 	return rowsAffected == 1, nil
 }
 

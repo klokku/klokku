@@ -30,10 +30,6 @@ func Open(cfg config.Database) (*pgx.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	//db, err := sql.Open("postgres", psqlInfo)
-	//if err != nil {
-	//	return nil, err
-	//}
 
 	err = conn.Ping(ctx)
 	if err != nil {
@@ -57,9 +53,11 @@ func Migrate(cfg config.Database) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
+	defer m.Close()
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migration up failed: %w", err)
 	}
+
 	return nil
 }
 

@@ -27,7 +27,7 @@ type Dependencies struct {
 	GoogleHandler *google.Handler
 
 	BudgetRepo            budget_plan.Repository
-	BudgetService         *budget_plan.BudgetPlanServiceImpl
+	BudgetService         *budget_plan.ServiceImpl
 	BudgetPlanHandler     *budget_plan.Handler
 	BudgetOverrideRepo    budget_override.BudgetOverrideRepo
 	BudgetOverrideService *budget_override.BudgetOverrideServiceImpl
@@ -70,7 +70,7 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.GoogleHandler = google.NewHandler(deps.GoogleService)
 
 	deps.BudgetRepo = budget_plan.NewBudgetRepo(db)
-	deps.BudgetService = budget_plan.NewBudgetServiceImpl(deps.BudgetRepo)
+	deps.BudgetService = budget_plan.NewBudgetPlanServiceImpl(deps.BudgetRepo)
 	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetService)
 	deps.BudgetOverrideRepo = budget_override.NewBudgetOverrideRepo(db)
 	deps.BudgetOverrideService = budget_override.NewBudgetOverrideService(deps.BudgetOverrideRepo)
