@@ -15,8 +15,6 @@ import (
 
 var ErrWeeklyPlanItemNotFound = errors.New("weekly plan item not found")
 
-// TODO test me please ;(
-
 type Repository interface {
 	WithTransaction(ctx context.Context, fn func(repo Repository) error) error
 	GetItemsForWeek(ctx context.Context, userId int, weekNumber WeekNumber) ([]WeeklyPlanItem, error)
@@ -93,7 +91,7 @@ func (r *repositoryImpl) GetItemsForWeek(ctx context.Context, userId int, weekNu
 			  FROM weekly_plan_item item 
 			  WHERE user_id = $1 AND week_number = $2 
 			  ORDER BY item.position`
-	rows, err := r.db.Query(ctx, query, userId, weekNumber.String())
+	rows, err := r.getQueryer().Query(ctx, query, userId, weekNumber.String())
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +136,7 @@ func (r *repositoryImpl) UpdateAllItemsByBudgetItemId(
 	color string,
 ) (int, error) {
 	query := `UPDATE weekly_plan_item SET name = $1, icon = $2, color = $3 WHERE user_id = $4 AND budget_item_id = $5`
-	result, err := r.db.Exec(ctx, query, name, icon, color, userId, budgetItemId)
+	result, err := r.getQueryer().Exec(ctx, query, name, icon, color, userId, budgetItemId)
 	if err != nil {
 		return 0, err
 	}
@@ -147,7 +145,7 @@ func (r *repositoryImpl) UpdateAllItemsByBudgetItemId(
 }
 
 func (r *repositoryImpl) GetItem(ctx context.Context, userId int, id int) (WeeklyPlanItem, error) {
-	query := `SELECT 
+	query := `SELECT
     			item.id,
     			item.budget_item_id,
     			item.week_number,
@@ -162,7 +160,7 @@ func (r *repositoryImpl) GetItem(ctx context.Context, userId int, id int) (Weekl
 	var itemWeekNumberString string
 	var weeklyDurationSec int
 	var item WeeklyPlanItem
-	err := r.db.QueryRow(ctx, query, userId, id).Scan(
+	err := r.getQueryer().QueryRow(ctx, query, userId, id).Scan(
 		&item.Id,
 		&item.BudgetItemId,
 		&itemWeekNumberString,
@@ -177,6 +175,7 @@ func (r *repositoryImpl) GetItem(ctx context.Context, userId int, id int) (Weekl
 	if err != nil {
 		return WeeklyPlanItem{}, err
 	}
+	item.WeeklyDuration = time.Duration(weeklyDurationSec) * time.Second
 	item.WeekNumber, err = WeekNumberFromString(itemWeekNumberString)
 	if err != nil {
 		return WeeklyPlanItem{}, fmt.Errorf("could not parse week number: %w", err)
@@ -185,10 +184,10 @@ func (r *repositoryImpl) GetItem(ctx context.Context, userId int, id int) (Weekl
 }
 
 func (r *repositoryImpl) UpdateItem(ctx context.Context, userId int, id int, weeklyDuration time.Duration, notes string) (WeeklyPlanItem, error) {
-	query := `UPDATE weekly_plan_item item 
-	 			SET weekly_duration_sec = $1, notes = $2 
-     			WHERE item.user_id = $3 AND item.id = $4 
-     			RETURNING 
+	query := `UPDATE weekly_plan_item item
+	 			SET weekly_duration_sec = $1, notes = $2
+     			WHERE item.user_id = $3 AND item.id = $4
+     			RETURNING
      			     item.id,
     					 item.budget_item_id,
     					 item.week_number,
@@ -199,13 +198,14 @@ func (r *repositoryImpl) UpdateItem(ctx context.Context, userId int, id int, wee
     					 item.color,
     					 item.notes `
 	var itemWeekNumberString string
+	var weeklyDurationSec int
 	var item WeeklyPlanItem
-	err := r.db.QueryRow(ctx, query, weeklyDuration.Seconds(), notes, userId, id).Scan(
+	err := r.getQueryer().QueryRow(ctx, query, weeklyDuration.Seconds(), notes, userId, id).Scan(
 		&item.Id,
 		&item.BudgetItemId,
 		&itemWeekNumberString,
 		&item.Name,
-		&item.WeeklyDuration,
+		&weeklyDurationSec,
 		&item.WeeklyOccurrences,
 		&item.Icon,
 		&item.Color,
@@ -217,6 +217,7 @@ func (r *repositoryImpl) UpdateItem(ctx context.Context, userId int, id int, wee
 		}
 		return WeeklyPlanItem{}, fmt.Errorf("could not update item: %w", err)
 	}
+	item.WeeklyDuration = time.Duration(weeklyDurationSec) * time.Second
 	item.WeekNumber, err = WeekNumberFromString(itemWeekNumberString)
 	if err != nil {
 		return WeeklyPlanItem{}, fmt.Errorf("could not parse week number: %w", err)
@@ -283,7 +284,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
                             notes,
                             position`, valuesBuilder.String())
 
-	rows, err := r.db.Query(ctx, query, args...)
+	rows, err := r.getQueryer().Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +326,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
 
 func (r *repositoryImpl) DeleteWeekItems(ctx context.Context, userId int, weekNumber WeekNumber) (int, error) {
 	query := `DELETE FROM weekly_plan_item WHERE user_id = $1 AND week_number = $2`
-	result, err := r.db.Exec(ctx, query, userId, weekNumber.String())
+	result, err := r.getQueryer().Exec(ctx, query, userId, weekNumber.String())
 	if err != nil {
 		return 0, err
 	}

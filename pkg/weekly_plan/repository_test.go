@@ -2,6 +2,7 @@ package weekly_plan
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"os"
 	"sort"
@@ -63,16 +64,127 @@ func TestRepositoryImpl_CreateItems(t *testing.T) {
 			require.NotEmpty(t, createdItem.Id)
 			assertWeeklyPlanItemsEqual(t, items[i], createdItem)
 		}
+	})
 
+	t.Run("should return nil when creating empty list of items", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		var items []WeeklyPlanItem
+
+		// when
+		createdItems, err := repo.createItems(ctx, userId, items)
+
+		// then
+		require.NoError(t, err)
+		require.Nil(t, createdItems)
 	})
 }
 
 func TestRepositoryImpl_DeleteWeekItems(t *testing.T) {
+	t.Run("should delete items for a specific week", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		currentWeek := WeekNumberFromDate(time.Now(), time.Monday)
+		nextWeek := WeekNumber{Year: currentWeek.Year, Week: currentWeek.Week + 1}
 
+		var currentWeekItems []WeeklyPlanItem
+		for i := 1; i <= 5; i++ {
+			currentWeekItems = append(currentWeekItems, weeklyItem(WeeklyPlanItem{
+				BudgetItemId: i,
+				WeekNumber:   currentWeek,
+			}))
+		}
+
+		var nextWeekItems []WeeklyPlanItem
+		for i := 6; i <= 10; i++ {
+			nextWeekItems = append(nextWeekItems, weeklyItem(WeeklyPlanItem{
+				BudgetItemId: i,
+				WeekNumber:   nextWeek,
+			}))
+		}
+
+		allItems := append(currentWeekItems, nextWeekItems...)
+		_, err := repo.createItems(ctx, userId, allItems)
+		require.NoError(t, err)
+
+		// when
+		deletedCount, err := repo.DeleteWeekItems(ctx, userId, currentWeek)
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, 5, deletedCount)
+
+		// verify current week items are deleted
+		remainingCurrentWeek, err := repo.GetItemsForWeek(ctx, userId, currentWeek)
+		require.NoError(t, err)
+		require.Len(t, remainingCurrentWeek, 0)
+
+		// verify next week items still exist
+		remainingNextWeek, err := repo.GetItemsForWeek(ctx, userId, nextWeek)
+		require.NoError(t, err)
+		require.Len(t, remainingNextWeek, 5)
+	})
+
+	t.Run("should return 0 when no items exist for the week", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		emptyWeek := WeekNumber{Year: 2025, Week: 50}
+
+		// when
+		deletedCount, err := repo.DeleteWeekItems(ctx, userId, emptyWeek)
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, 0, deletedCount)
+	})
 }
 
 func TestRepositoryImpl_GetItem(t *testing.T) {
+	t.Run("should return a single item by id", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		items := []WeeklyPlanItem{
+			weeklyItem(WeeklyPlanItem{BudgetItemId: 1}),
+			weeklyItem(WeeklyPlanItem{BudgetItemId: 2}),
+		}
+		createdItems, err := repo.createItems(ctx, userId, items)
+		require.NoError(t, err)
+		require.Len(t, createdItems, 2)
 
+		// when
+		item, err := repo.GetItem(ctx, userId, createdItems[0].Id)
+
+		// then
+		require.NoError(t, err)
+		assertWeeklyPlanItemsEqual(t, createdItems[0], item)
+	})
+
+	t.Run("should return error when item does not exist", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		nonExistentId := 99999
+
+		// when
+		_, err := repo.GetItem(ctx, userId, nonExistentId)
+
+		// then
+		require.Error(t, err)
+	})
+
+	t.Run("should not return items belonging to other users", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		items := []WeeklyPlanItem{weeklyItem(WeeklyPlanItem{BudgetItemId: 1})}
+		createdItems, err := repo.createItems(ctx, userId, items)
+		require.NoError(t, err)
+
+		// when
+		differentUserId := userId + 1
+		_, err = repo.GetItem(ctx, differentUserId, createdItems[0].Id)
+
+		// then
+		require.Error(t, err)
+	})
 }
 
 func TestRepositoryImpl_GetItemsForWeek(t *testing.T) {
@@ -117,11 +229,254 @@ func TestRepositoryImpl_GetItemsForWeek(t *testing.T) {
 }
 
 func TestRepositoryImpl_UpdateAllItemsByBudgetItemId(t *testing.T) {
+	t.Run("should update name, icon, and color for all items with the same budget item id", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		budgetItemId := 42
+		currentWeek := WeekNumberFromDate(time.Now(), time.Monday)
 
+		var items []WeeklyPlanItem
+		for i := 0; i < 3; i++ {
+			items = append(items, weeklyItem(WeeklyPlanItem{
+				BudgetItemId: budgetItemId,
+				WeekNumber:   WeekNumber{Year: currentWeek.Year, Week: currentWeek.Week + i},
+				Name:         "Old Name",
+				Icon:         "old-icon",
+				Color:        "old-color",
+			}))
+		}
+
+		// Add an item with a different budget item id
+		items = append(items, weeklyItem(WeeklyPlanItem{
+			BudgetItemId: 99,
+			WeekNumber:   WeekNumber{Year: currentWeek.Year, Week: currentWeek.Week + 10},
+			Name:         "Different Item",
+			Icon:         "different-icon",
+			Color:        "different-color",
+		}))
+
+		createdItems, err := repo.createItems(ctx, userId, items)
+		require.NoError(t, err)
+
+		// when
+		newName := "Updated Name"
+		newIcon := "updated-icon"
+		newColor := "updated-color"
+		updatedCount, err := repo.UpdateAllItemsByBudgetItemId(ctx, userId, budgetItemId, newName, newIcon, newColor)
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, 3, updatedCount)
+
+		// verify the updates
+		for i := 0; i < 3; i++ {
+			item, err := repo.GetItem(ctx, userId, createdItems[i].Id)
+			require.NoError(t, err)
+			require.Equal(t, newName, item.Name)
+			require.Equal(t, newIcon, item.Icon)
+			require.Equal(t, newColor, item.Color)
+		}
+
+		// verify the item with different budget id was not updated
+		differentItem, err := repo.GetItem(ctx, userId, createdItems[3].Id)
+		require.NoError(t, err)
+		require.Equal(t, "Different Item", differentItem.Name)
+		require.Equal(t, "different-icon", differentItem.Icon)
+		require.Equal(t, "different-color", differentItem.Color)
+	})
+
+	t.Run("should return 0 when no items match the budget item id", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		nonExistentBudgetItemId := 99999
+
+		// when
+		updatedCount, err := repo.UpdateAllItemsByBudgetItemId(ctx, userId, nonExistentBudgetItemId, "name", "icon", "color")
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, 0, updatedCount)
+	})
+
+	t.Run("should only update items for the specified user", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		budgetItemId := 42
+
+		items := []WeeklyPlanItem{
+			weeklyItem(WeeklyPlanItem{BudgetItemId: budgetItemId}),
+		}
+
+		createdItems, err := repo.createItems(ctx, userId, items)
+		require.NoError(t, err)
+
+		// when - try to update with different user id
+		differentUserId := userId + 1
+		updatedCount, err := repo.UpdateAllItemsByBudgetItemId(ctx, differentUserId, budgetItemId, "new name", "new icon", "new color")
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, 0, updatedCount)
+
+		// verify original item was not updated
+		item, err := repo.GetItem(ctx, userId, createdItems[0].Id)
+		require.NoError(t, err)
+		require.NotEqual(t, "new name", item.Name)
+	})
+}
+
+func TestRepositoryImpl_WithTransaction(t *testing.T) {
+	t.Run("should commit transaction on success", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		item := weeklyItem(WeeklyPlanItem{BudgetItemId: 1})
+
+		// when
+		err := repo.WithTransaction(ctx, func(txRepo Repository) error {
+			_, err := txRepo.createItems(ctx, userId, []WeeklyPlanItem{item})
+			return err
+		})
+
+		// then
+		require.NoError(t, err)
+
+		// verify item was created
+		items, err := repo.GetItemsForWeek(ctx, userId, item.WeekNumber)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+	})
+
+	t.Run("should rollback transaction on error", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		item := weeklyItem(WeeklyPlanItem{BudgetItemId: 1})
+
+		// when
+		err := repo.WithTransaction(ctx, func(txRepo Repository) error {
+			_, err := txRepo.createItems(ctx, userId, []WeeklyPlanItem{item})
+			if err != nil {
+				return err
+			}
+			return errors.New("intentional error to trigger rollback")
+		})
+
+		// then
+		require.Error(t, err)
+		require.Equal(t, "intentional error to trigger rollback", err.Error())
+
+		// verify item was not created
+		items, err := repo.GetItemsForWeek(ctx, userId, item.WeekNumber)
+		require.NoError(t, err)
+		require.Len(t, items, 0)
+	})
+
+	t.Run("should support multiple operations in transaction", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		currentWeek := WeekNumberFromDate(time.Now(), time.Monday)
+
+		item1 := weeklyItem(WeeklyPlanItem{BudgetItemId: 1, WeekNumber: currentWeek})
+		item2 := weeklyItem(WeeklyPlanItem{BudgetItemId: 2, WeekNumber: currentWeek})
+
+		var firstItemId int
+
+		// when
+		err := repo.WithTransaction(ctx, func(txRepo Repository) error {
+			// Create items
+			created, err := txRepo.createItems(ctx, userId, []WeeklyPlanItem{item1, item2})
+			if err != nil {
+				return err
+			}
+
+			firstItemId = created[0].Id
+
+			// Update one of them
+			_, err = txRepo.UpdateItem(ctx, userId, created[0].Id, 10*time.Hour, "Updated in transaction")
+			if err != nil {
+				return err
+			}
+
+			return nil
+		})
+
+		// then
+		require.NoError(t, err)
+
+		// verify both operations succeeded
+		items, err := repo.GetItemsForWeek(ctx, userId, currentWeek)
+		require.NoError(t, err)
+		require.Len(t, items, 2)
+
+		// verify the update by getting the specific item
+		updatedItem, err := repo.GetItem(ctx, userId, firstItemId)
+		require.NoError(t, err)
+		require.Equal(t, "Updated in transaction", updatedItem.Notes)
+	})
 }
 
 func TestRepositoryImpl_UpdateItem(t *testing.T) {
+	t.Run("should update weekly duration and notes", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		originalItem := weeklyItem(WeeklyPlanItem{
+			WeeklyDuration: 2 * time.Hour,
+			Notes:          "Original notes",
+		})
 
+		createdItems, err := repo.createItems(ctx, userId, []WeeklyPlanItem{originalItem})
+		require.NoError(t, err)
+		createdItem := createdItems[0]
+
+		// when
+		newDuration := 5 * time.Hour
+		newNotes := "Updated notes"
+		updatedItem, err := repo.UpdateItem(ctx, userId, createdItem.Id, newDuration, newNotes)
+
+		// then
+		require.NoError(t, err)
+		require.Equal(t, createdItem.Id, updatedItem.Id)
+		require.Equal(t, newDuration, updatedItem.WeeklyDuration)
+		require.Equal(t, newNotes, updatedItem.Notes)
+
+		// verify other fields remain unchanged
+		require.Equal(t, createdItem.BudgetItemId, updatedItem.BudgetItemId)
+		require.Equal(t, createdItem.WeekNumber, updatedItem.WeekNumber)
+		require.Equal(t, createdItem.Name, updatedItem.Name)
+		require.Equal(t, createdItem.Icon, updatedItem.Icon)
+		require.Equal(t, createdItem.Color, updatedItem.Color)
+	})
+
+	t.Run("should return ErrWeeklyPlanItemNotFound when item does not exist", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		nonExistentId := 99999
+
+		// when
+		_, err := repo.UpdateItem(ctx, userId, nonExistentId, 1*time.Hour, "notes")
+
+		// then
+		require.ErrorIs(t, err, ErrWeeklyPlanItemNotFound)
+	})
+
+	t.Run("should not update items belonging to other users", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		item := weeklyItem(WeeklyPlanItem{Notes: "Original"})
+		createdItems, err := repo.createItems(ctx, userId, []WeeklyPlanItem{item})
+		require.NoError(t, err)
+
+		// when
+		differentUserId := userId + 1
+		_, err = repo.UpdateItem(ctx, differentUserId, createdItems[0].Id, 3*time.Hour, "Should not update")
+
+		// then
+		require.ErrorIs(t, err, ErrWeeklyPlanItemNotFound)
+
+		// verify original item was not updated
+		originalItem, err := repo.GetItem(ctx, userId, createdItems[0].Id)
+		require.NoError(t, err)
+		require.Equal(t, "Original", originalItem.Notes)
+	})
 }
 
 func weeklyItem(itemPartial WeeklyPlanItem) WeeklyPlanItem {
