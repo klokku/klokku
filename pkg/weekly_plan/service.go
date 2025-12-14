@@ -57,7 +57,6 @@ func NewService(repo Repository, bpReader BudgetPlanReader, eventBus *event_bus.
 	return service
 }
 
-// TODO test me - I'm complex
 func (s *ServiceImpl) GetItemsForWeek(ctx context.Context, date time.Time) ([]WeeklyPlanItem, error) {
 	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
@@ -88,7 +87,6 @@ func (s *ServiceImpl) GetItemsForWeek(ctx context.Context, date time.Time) ([]We
 	return items, nil
 }
 
-// TODO test me for sure
 func (s *ServiceImpl) UpdateItem(
 	ctx context.Context,
 	weekDate time.Time,
@@ -123,16 +121,26 @@ func (s *ServiceImpl) UpdateItem(
 		return WeeklyPlanItem{}, ErrWeeklyItemAlreadyExists
 	}
 
-	items, err := s.createItemsFromBudgetPlan(ctx, budgetItem.PlanId, week)
+	var updatedItem WeeklyPlanItem
+	err = s.repo.WithTransaction(ctx, func(repo Repository) error {
+		transactionalService := ServiceImpl{repo, s.bpReader, nil}
+		items, err := transactionalService.createItemsFromBudgetPlan(ctx, budgetItem.PlanId, week)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if item.BudgetItemId == budgetItemId {
+				updatedItem, err = repo.UpdateItem(ctx, currentUser.Id, item.Id, weeklyDuration, notes)
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return WeeklyPlanItem{}, err
-	}
-	var updatedItem WeeklyPlanItem
-	for _, item := range items {
-		if item.BudgetItemId == budgetItemId {
-			updatedItem = item
-			break
-		}
 	}
 	return updatedItem, nil
 }
@@ -180,7 +188,7 @@ func (s *ServiceImpl) ResetWeekItemToBudgetPlanItem(ctx context.Context, id int)
 		return WeeklyPlanItem{}, ErrBudgetItemNotFound
 	}
 
-	updatedItem, err := s.repo.UpdateItem(ctx, item.Id, item.BudgetItemId, budgetItem.WeeklyDuration, "")
+	updatedItem, err := s.repo.UpdateItem(ctx, userId, item.Id, budgetItem.WeeklyDuration, "")
 	if err != nil {
 		if errors.Is(err, ErrWeeklyItemNotFound) {
 			return WeeklyPlanItem{}, ErrWeeklyItemNotFound
@@ -192,7 +200,6 @@ func (s *ServiceImpl) ResetWeekItemToBudgetPlanItem(ctx context.Context, id int)
 	return updatedItem, nil
 }
 
-// TODO test this whole service, because it's complex as hell
 func (s *ServiceImpl) ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate time.Time) ([]WeeklyPlanItem, error) {
 	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
@@ -227,7 +234,7 @@ func (s *ServiceImpl) ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate t
 				log.Errorf("failed to get budget plan item: %v", err)
 				return err
 			}
-			updatedItem, err := repo.UpdateItem(ctx, item.Id, item.BudgetItemId, budgetItem.WeeklyDuration, "")
+			updatedItem, err := repo.UpdateItem(ctx, currentUser.Id, item.Id, budgetItem.WeeklyDuration, "")
 			if err != nil {
 				return err
 			}
