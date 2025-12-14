@@ -21,11 +21,11 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}/position", deps.BudgetPlanHandler.SetItemPosition).Methods("PUT")
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.DeleteItem).Methods("DELETE")
 
-	// Budget Override
-	r.HandleFunc("/api/budget/override", deps.BudgetOverrideHandler.GetOverrides).Queries("startDate", "{startDate}").Methods("GET")
-	r.HandleFunc("/api/budget/override", deps.BudgetOverrideHandler.Register).Methods("POST")
-	r.HandleFunc("/api/budget/override/{overrideId}", deps.BudgetOverrideHandler.Update).Methods("PUT")
-	r.HandleFunc("/api/budget/override/{overrideId}", deps.BudgetOverrideHandler.Delete).Methods("DELETE")
+	// Weekly Plan item
+	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.GetItems).Queries("date", "{date}").Methods("GET")
+	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.ResetWeek).Queries("date", "{date}").Methods("DELETE")
+	r.HandleFunc("/api/weeklyplan/item", deps.WeeklyPlanHandler.UpdateItem).Queries("date", "{date}").Methods("PUT")
+	r.HandleFunc("/api/weeklyplan/item/{itemId}", deps.WeeklyPlanHandler.ResetItem).Methods("DELETE")
 
 	// Events
 	r.HandleFunc("/api/event", deps.EventHandler.StartEvent).Methods("POST")

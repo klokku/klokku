@@ -1,12 +1,10 @@
 package app
 
 import (
-	"database/sql"
-
 	"github.com/jackc/pgx/v5"
 	"github.com/klokku/klokku/internal/config"
+	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget_override"
 	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/calendar_provider"
@@ -15,6 +13,7 @@ import (
 	"github.com/klokku/klokku/pkg/google"
 	"github.com/klokku/klokku/pkg/stats"
 	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/weekly_plan"
 )
 
 // Dependencies holds all services and handlers for the application.
@@ -22,16 +21,19 @@ type Dependencies struct {
 	UserService user.Service
 	UserHandler *user.Handler
 
+	EventBus *event_bus.EventBus
+
 	GoogleAuth    *google.GoogleAuth
 	GoogleService google.Service
 	GoogleHandler *google.Handler
 
-	BudgetRepo            budget_plan.Repository
-	BudgetService         *budget_plan.ServiceImpl
-	BudgetPlanHandler     *budget_plan.Handler
-	BudgetOverrideRepo    budget_override.BudgetOverrideRepo
-	BudgetOverrideService *budget_override.BudgetOverrideServiceImpl
-	BudgetOverrideHandler *budget_override.BudgetOverrideHandler
+	BudgetRepo        budget_plan.Repository
+	BudgetService     budget_plan.Service
+	BudgetPlanHandler *budget_plan.Handler
+
+	WeeklyPlanRepo    weekly_plan.Repository
+	WeeklyPlanService weekly_plan.Service
+	WeeklyPlanHandler *weekly_plan.Handler
 
 	KlokkuCalendarRepository *calendar.RepositoryImpl
 	KlokkuCalendarService    *calendar.Service
@@ -62,6 +64,8 @@ type Dependencies struct {
 func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps := &Dependencies{}
 
+	deps.EventBus = event_bus.NewEventBus()
+
 	deps.UserService = user.NewUserService(user.NewUserRepo(db))
 	deps.UserHandler = user.NewHandler(deps.UserService)
 
@@ -69,12 +73,12 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.GoogleService = google.NewService(deps.GoogleAuth)
 	deps.GoogleHandler = google.NewHandler(deps.GoogleService)
 
-	deps.BudgetRepo = budget_plan.NewBudgetRepo(db)
-	deps.BudgetService = budget_plan.NewBudgetPlanServiceImpl(deps.BudgetRepo)
+	deps.BudgetRepo = budget_plan.NewBudgetPlanRepo(db)
+	deps.BudgetService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)
 	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetService)
-	deps.BudgetOverrideRepo = budget_override.NewBudgetOverrideRepo(db)
-	deps.BudgetOverrideService = budget_override.NewBudgetOverrideService(deps.BudgetOverrideRepo)
-	deps.BudgetOverrideHandler = budget_override.NewBudgetOverrideHandler(deps.BudgetOverrideService)
+	deps.WeeklyPlanRepo = weekly_plan.NewRepo(db)
+	deps.WeeklyPlanService = weekly_plan.NewService(deps.WeeklyPlanRepo, deps.BudgetService, deps.EventBus)
+	deps.WeeklyPlanHandler = weekly_plan.NewHandler(deps.WeeklyPlanService)
 
 	deps.KlokkuCalendarRepository = calendar.NewRepository(db)
 	deps.KlokkuCalendarService = calendar.NewService(deps.KlokkuCalendarRepository)
@@ -89,6 +93,7 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 
 	deps.Clock = &utils.SystemClock{}
 	deps.EventStatsService = event.NewEventStatsServiceImpl(deps.CalendarProvider, deps.Clock)
+	// TODO what is needed for the stats service?
 	deps.StatsService = stats.NewStatsServiceImpl(deps.EventService, deps.EventStatsService, deps.BudgetRepo, deps.BudgetOverrideRepo)
 	deps.CsvStatsRenderer = stats.NewCsvStatsTransformer()
 	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService, deps.CsvStatsRenderer)

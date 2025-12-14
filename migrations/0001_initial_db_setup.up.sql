@@ -55,11 +55,12 @@ CREATE TABLE weekly_plan_item
     weekly_occurrences  INTEGER,
     icon                TEXT,
     color               TEXT,
-    notes               TEXT,
+    notes               TEXT NOT NULL DEFAULT '',
     position            INTEGER NOT NULL,
     user_id             INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX weekly_plan_item_user_id_week_number_idx ON weekly_plan_item (user_id, week_number);
+CREATE UNIQUE INDEX weekly_plan_item_budget_item_week_number_idx ON weekly_plan_item (budget_item_id, week_number);
 
 CREATE TABLE calendar_event
 (

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/jackc/pgx/v5"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,10 +21,10 @@ type Repo interface {
 }
 
 type UserRepoImpl struct {
-	db *sql.DB
+	db *pgx.Conn
 }
 
-func NewUserRepo(db *sql.DB) *UserRepoImpl {
+func NewUserRepo(db *pgx.Conn) *UserRepoImpl {
 	return &UserRepoImpl{db: db}
 }
 
@@ -32,9 +33,10 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 	if eventCalendarType == "" {
 		eventCalendarType = KlokkuCalendar
 	}
-	query := `INSERT INTO user (uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
-				event_calendar_google_calendar_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	result, err := u.db.ExecContext(ctx, query,
+	query := `INSERT INTO "user" (uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
+				event_calendar_google_calendar_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`
+	var id int
+	err := u.db.QueryRow(ctx, query,
 		user.Uid,
 		user.Username,
 		user.DisplayName,
@@ -43,14 +45,9 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 		user.Settings.WeekFirstDay,
 		eventCalendarType,
 		user.Settings.GoogleCalendar.CalendarId,
-	)
+	).Scan(&id)
 	if err != nil {
 		log.Errorf("failed to create user: %v", err)
-		return 0, err
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		log.Errorf("failed to get last insert id: %v", err)
 		return 0, err
 	}
 	return int(id), nil
@@ -58,10 +55,11 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 
 func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
-				event_calendar_google_calendar_id FROM user WHERE id = ?`
+				event_calendar_google_calendar_id FROM "user" WHERE id = $1`
 	var user User
-	err := u.db.QueryRowContext(context.Background(), query, id).
-		Scan(&user.Id,
+	err := u.db.QueryRow(context.Background(), query, id).
+		Scan(
+			&user.Id,
 			&user.Uid,
 			&user.Username,
 			&user.DisplayName,
@@ -83,11 +81,12 @@ func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 
 func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type,
-				event_calendar_google_calendar_id FROM user WHERE uid = ?`
+				event_calendar_google_calendar_id FROM "user" WHERE uid = $1`
 
 	var user User
-	err := u.db.QueryRowContext(context.Background(), query, uid).
-		Scan(&user.Id,
+	err := u.db.QueryRow(context.Background(), query, uid).
+		Scan(
+			&user.Id,
 			&user.Uid,
 			&user.Username,
 			&user.DisplayName,
@@ -108,8 +107,9 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 }
 
 func (u *UserRepoImpl) UpdateUser(ctx context.Context, userId int, user User) (User, error) {
-	query := "UPDATE user SET display_name = ?, timezone = ?, week_first_day = ?, event_calendar_type = ?, event_calendar_google_calendar_id = ? WHERE id = ?"
-	result, err := u.db.ExecContext(ctx, query,
+	query := `UPDATE "user" SET display_name = $1, timezone = $2, week_first_day = $3, event_calendar_type = $4, 
+				event_calendar_google_calendar_id = $5 WHERE id = $6`
+	result, err := u.db.Exec(ctx, query,
 		user.DisplayName,
 		user.Settings.Timezone,
 		user.Settings.WeekFirstDay,
@@ -120,11 +120,7 @@ func (u *UserRepoImpl) UpdateUser(ctx context.Context, userId int, user User) (U
 	if err != nil {
 		return User{}, err
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Errorf("failed to get rows affected of updating user: %v", err)
-		return User{}, err
-	}
+	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
 		log.Info("no rows affected of updating user")
 		return User{}, errors.New("User with id " + strconv.Itoa(user.Id) + " not found")
@@ -133,16 +129,12 @@ func (u *UserRepoImpl) UpdateUser(ctx context.Context, userId int, user User) (U
 }
 
 func (u *UserRepoImpl) DeleteUser(ctx context.Context, id int) error {
-	query := "DELETE FROM user WHERE id = ?"
-	result, err := u.db.ExecContext(ctx, query, id)
+	query := `DELETE FROM "user" WHERE id = $1`
+	result, err := u.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Errorf("failed to get rows affected of deleting user: %v", err)
-		return err
-	}
+	rowsAffected := result.RowsAffected()
 	if rowsAffected == 0 {
 		log.Info("no rows affected of deleting user")
 		return errors.New("User with id " + strconv.Itoa(id) + " not found")
@@ -152,8 +144,8 @@ func (u *UserRepoImpl) DeleteUser(ctx context.Context, id int) error {
 
 func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
-		        event_calendar_google_calendar_id FROM user`
-	rows, err := u.db.QueryContext(ctx, query)
+		        event_calendar_google_calendar_id FROM "user"`
+	rows, err := u.db.Query(ctx, query)
 	if err != nil {
 		log.Errorf("failed to get users: %v", err)
 		return nil, err
@@ -178,9 +170,9 @@ func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 }
 
 func (u *UserRepoImpl) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
-	query := `SELECT COUNT(*) FROM user WHERE username = ?`
+	query := `SELECT COUNT(*) FROM "user" WHERE username = $1`
 	var count int
-	err := u.db.QueryRowContext(ctx, query, username).Scan(&count)
+	err := u.db.QueryRow(ctx, query, username).Scan(&count)
 	if err != nil {
 		log.Errorf("failed to check username availability: %v", err)
 		return false, err

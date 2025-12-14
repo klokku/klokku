@@ -4,16 +4,21 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
 )
 
+type BudgetPlanItemUpdated BudgetItem
+
 type Service interface {
 	GetPlan(ctx context.Context, planId int) (BudgetPlan, error)
+	GetCurrentPlan(ctx context.Context) (BudgetPlan, error)
 	ListPlans(ctx context.Context) ([]BudgetPlan, error)
 	CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
 	UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
 	DeletePlan(ctx context.Context, planId int) (bool, error)
+	GetItem(ctx context.Context, id int) (BudgetItem, error)
 	CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error)
 	MoveItemAfter(ctx context.Context, planId, itemId, precedingId int) (bool, error)
 	UpdateItem(ctx context.Context, budget BudgetItem) (bool, error)
@@ -21,11 +26,12 @@ type Service interface {
 }
 
 type ServiceImpl struct {
-	repo Repository
+	repo     Repository
+	eventBus *event_bus.EventBus
 }
 
-func NewBudgetPlanServiceImpl(repo Repository) *ServiceImpl {
-	return &ServiceImpl{repo: repo}
+func NewBudgetPlanService(repo Repository, eventBus *event_bus.EventBus) Service {
+	return &ServiceImpl{repo: repo, eventBus: eventBus}
 }
 
 func (s *ServiceImpl) GetPlan(ctx context.Context, planId int) (BudgetPlan, error) {
@@ -34,6 +40,14 @@ func (s *ServiceImpl) GetPlan(ctx context.Context, planId int) (BudgetPlan, erro
 		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
 	}
 	return s.repo.GetPlan(ctx, userId, planId)
+}
+
+func (s *ServiceImpl) GetCurrentPlan(ctx context.Context) (BudgetPlan, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return s.repo.GetCurrentPlan(ctx, userId)
 }
 
 func (s *ServiceImpl) ListPlans(ctx context.Context) ([]BudgetPlan, error) {
@@ -72,6 +86,15 @@ func (s *ServiceImpl) DeletePlan(ctx context.Context, planId int) (bool, error) 
 	return s.repo.DeletePlan(ctx, userId, planId)
 }
 
+// TODO test
+func (s *ServiceImpl) GetItem(ctx context.Context, id int) (BudgetItem, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetItem{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return s.repo.GetItem(ctx, userId, id)
+}
+
 func (s *ServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
@@ -92,6 +115,7 @@ func (s *ServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (Budget
 	return budget, nil
 }
 
+// TODO test that it publish to event bus
 func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
@@ -106,6 +130,23 @@ func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, 
 		log.Warnf("item not updated, probably because it does not exist (%d) or the user (%d) is not the owner", budget.Id, userId)
 		return false, fmt.Errorf("item not updated")
 	}
+
+	// This may fail, and because the transaction is already closed, the budget item is changed and this
+	// event may not be properly processed by the subscribers.
+	// This is a conscious decision done because of the current architecture of the application.
+	// A proper solution would be to implement inbox and outbox patterns, but this is out of scope for now.
+	// Application is running as a single process, with a single database, so the risk of the event not being processed is low.
+	// Additionally, there is an easy workaround in case data are stale. It is enough to update the budget item again.
+	err = s.eventBus.Publish(event_bus.NewEvent(
+		ctx,
+		"budget_plan.item.updated",
+		budget,
+	))
+	if err != nil {
+		log.Errorf("failed to publish budget item update event: %v", err)
+		return false, err
+	}
+
 	return true, nil
 }
 

@@ -17,7 +17,7 @@ var budgetRepoStub = NewStubBudgetRepo()
 var service Service
 
 func setup(t *testing.T) func() {
-	service = NewBudgetPlanServiceImpl(budgetRepoStub)
+	service = NewBudgetPlanService(budgetRepoStub)
 	return func() {
 		t.Log("Teardown after test")
 		budgetRepoStub.Cleanup()
@@ -47,6 +47,41 @@ func TestServiceImpl_GetPlan(t *testing.T) {
 
 		// when
 		_, err := service.GetPlan(context.Background(), 1)
+
+		// then
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get current user")
+	})
+}
+
+func TestServiceImpl_GetCurrentPlan(t *testing.T) {
+	t.Run("should get a plan successfully", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		_, err := service.CreatePlan(ctx, BudgetPlan{Name: "Test Plan 1"})
+		require.NoError(t, err)
+		currentPlan, err := service.CreatePlan(ctx, BudgetPlan{Name: "Test Plan 2"})
+		require.NoError(t, err)
+		_, err = service.UpdatePlan(ctx, BudgetPlan{Id: currentPlan.Id, Name: currentPlan.Name, IsCurrent: true})
+		require.NoError(t, err)
+
+		// when
+		result, err := service.GetCurrentPlan(ctx)
+
+		// then
+		assert.NoError(t, err)
+		assert.Equal(t, currentPlan.Id, result.Id)
+		assert.Equal(t, "Test Plan 2", result.Name)
+	})
+
+	t.Run("should return error when context has no user", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// when
+		_, err := service.GetCurrentPlan(context.Background())
 
 		// then
 		assert.Error(t, err)

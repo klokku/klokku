@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 func setupTestRepository(t *testing.T) (context.Context, Repository, int) {
 	ctx := context.Background()
 	db := openDb()
-	repository := NewBudgetRepo(db)
+	repository := NewBudgetPlanRepo(db)
 	t.Cleanup(func() {
 		db.Close(ctx)
 		err := pgContainer.Restore(ctx)
@@ -355,5 +355,53 @@ func TestRepositoryImpl_FindMaxPlanItemPosition_WithItems(t *testing.T) {
 		// then
 		assert.NoError(t, err)
 		assert.Equal(t, 0, maxPosition)
+	})
+}
+
+func TestRepositoryImpl_GetCurrentPlan(t *testing.T) {
+	t.Run("should return the current plan", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		_, err := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan 1"})
+		currentPlan, err := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan 2"})
+		require.NoError(t, err)
+		_, err = repo.UpdatePlan(ctx, userId, BudgetPlan{Id: currentPlan.Id, Name: currentPlan.Name, IsCurrent: true})
+		require.NoError(t, err)
+
+		// when
+		plan, err := repo.GetCurrentPlan(ctx, userId)
+
+		// then
+		assert.NoError(t, err)
+		assert.Equal(t, currentPlan.Id, plan.Id)
+		assert.Equal(t, "Test Plan 2", plan.Name)
+		assert.True(t, plan.IsCurrent)
+	})
+
+	t.Run("should error when plan is not found", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+
+		// when
+		_, err := repo.GetCurrentPlan(ctx, userId)
+
+		// then
+		assert.ErrorIs(t, err, ErrPlanNotFound)
+	})
+
+	t.Run("should return plan with items", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+
+		// when
+		plan1, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan 1"})
+		repo.StoreItem(ctx, userId, BudgetItem{PlanId: plan1.Id, Name: "Plan 1 Item 1", WeeklyDuration: time.Duration(1) * time.Hour})
+		repo.StoreItem(ctx, userId, BudgetItem{PlanId: plan1.Id, Name: "Plan 1 Item 2", WeeklyDuration: time.Duration(2) * time.Hour})
+
+		// then
+		storedPlan, _ := repo.GetCurrentPlan(ctx, userId)
+		assert.Len(t, storedPlan.Items, 2)
+		assert.Equal(t, "Plan 1 Item 1", storedPlan.Items[0].Name)
+		assert.Equal(t, "Plan 1 Item 2", storedPlan.Items[1].Name)
 	})
 }

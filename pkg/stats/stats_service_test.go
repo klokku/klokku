@@ -16,7 +16,7 @@ import (
 var ctx = context.WithValue(context.Background(), user.UserIDKey, 1)
 var calendarStub = calendar.NewStubCalendar()
 var budgetRepoStub = budget_plan.NewStubBudgetRepo()
-var budgetRepoService = budget_plan.NewBudgetPlanServiceImpl(budgetRepoStub)
+var budgetRepoService = budget_plan.NewBudgetPlanService(budgetRepoStub)
 var budgetOverrideRepoStub = budget_override.NewStubBudgetOverrideRepo()
 var eventRepoStub = &event.StubEventRepository{}
 var userRepoStub = user.NewStubUserRepository()

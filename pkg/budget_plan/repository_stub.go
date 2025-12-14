@@ -25,6 +25,24 @@ func (s *RepositoryStub) CreatePlan(ctx context.Context, userId int, plan Budget
 	return plan, nil
 }
 
+func (s *RepositoryStub) GetCurrentPlan(ctx context.Context, userId int) (BudgetPlan, error) {
+	if s.currentPlanId == 0 {
+		return BudgetPlan{}, ErrPlanNotFound
+	}
+	return s.plans[s.currentPlanId], nil
+}
+
+func (s *RepositoryStub) GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error) {
+	for _, plan := range s.plans {
+		for _, item := range plan.Items {
+			if item.Id == itemId {
+				return item, nil
+			}
+		}
+	}
+	return BudgetItem{}, ErrBudgetPlanItemNotFound
+}
+
 func (s *RepositoryStub) UpdatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error) {
 	if plan.IsCurrent {
 		s.currentPlanId = plan.Id
