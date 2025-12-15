@@ -225,18 +225,15 @@ func (handler *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := DTOToItem(planId, itemDTO)
-	ok, err := handler.service.UpdateItem(r.Context(), item)
+	updatedItem, err := handler.service.UpdateItem(r.Context(), item)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !ok {
-		http.Error(w, "Item not found", http.StatusNotFound)
-		return
-	}
+	updatedItemDTO := ItemToDTO(updatedItem)
 
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(itemDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(updatedItemDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

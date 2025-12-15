@@ -24,8 +24,8 @@ type Repository interface {
 	UpdatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error)
 	DeletePlan(ctx context.Context, userId int, planId int) (bool, error)
 	GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error)
-	UpdateItem(ctx context.Context, userId int, budget BudgetItem) (bool, error)
-	UpdateItemPosition(ctx context.Context, userId int, budget BudgetItem) (bool, error)
+	UpdateItem(ctx context.Context, userId int, item BudgetItem) (BudgetItem, error)
+	UpdateItemPosition(ctx context.Context, userId int, item BudgetItem) (bool, error)
 	FindMaxPlanItemPosition(ctx context.Context, planId int, userId int) (int, error)
 	DeleteItem(ctx context.Context, userId int, itemId int) (bool, error)
 }
@@ -362,7 +362,6 @@ func (bi RepositoryImpl) DeletePlan(ctx context.Context, userId int, planId int)
 	return rowsAffected == 1, nil
 }
 
-// TODO test this function
 func (bi RepositoryImpl) GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error) {
 	query := `SELECT 
     			item.budget_plan_id, 
@@ -435,31 +434,60 @@ func (bi RepositoryImpl) UpdateItemPosition(ctx context.Context, userId int, bud
 	return rowsAffected == 1, nil
 }
 
-func (bi RepositoryImpl) UpdateItem(ctx context.Context, userId int, budget BudgetItem) (bool, error) {
+func (bi RepositoryImpl) UpdateItem(ctx context.Context, userId int, item BudgetItem) (BudgetItem, error) {
 	query := `UPDATE budget_item SET 
                   name = $1, 
                   weekly_duration_sec = $2, 
                   weekly_occurrences = $3, 
                   icon = $4,
                   color = $5
-              WHERE id = $6 and user_id = $7`
-	result, err := bi.db.Exec(ctx, query,
-		budget.Name,
-		budget.WeeklyDuration.Milliseconds()/1000,
-		budget.WeeklyOccurrences,
-		budget.Icon,
-		budget.Color,
-		budget.Id,
-		userId,
-	)
-	if err != nil {
-		err := fmt.Errorf("could not execute query: %v", err)
-		log.Error(err)
-		return false, err
-	}
+              WHERE id = $6 and user_id = $7 RETURNING budget_plan_id, id, name, weekly_duration_sec, weekly_occurrences, icon, color, position`
 
-	rowsAffected := result.RowsAffected()
-	return rowsAffected == 1, nil
+	var (
+		itemPlanId        int
+		itemId            int
+		itemName          string
+		weeklyDurationSec int
+		weeklyOccurrences sql.NullInt64
+		itemIcon          sql.NullString
+		itemColor         sql.NullString
+		itemPosition      int
+	)
+
+	err := bi.db.QueryRow(ctx, query,
+		item.Name,
+		item.WeeklyDuration.Milliseconds()/1000,
+		item.WeeklyOccurrences,
+		item.Icon,
+		item.Color,
+		item.Id,
+		userId,
+	).Scan(&itemPlanId, &itemId, &itemName, &weeklyDurationSec, &weeklyOccurrences, &itemIcon, &itemColor, &itemPosition)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return BudgetItem{}, ErrBudgetPlanItemNotFound
+		}
+		err := fmt.Errorf("error scanning row: %w", err)
+		log.Error(err)
+		return BudgetItem{}, err
+	}
+	var updatedItem BudgetItem
+	updatedItem.Id = itemId
+	updatedItem.PlanId = itemPlanId
+	updatedItem.Name = itemName
+	updatedItem.WeeklyDuration = time.Duration(weeklyDurationSec) * time.Second
+	if weeklyOccurrences.Valid {
+		updatedItem.WeeklyOccurrences = int(weeklyOccurrences.Int64)
+	}
+	if itemIcon.Valid {
+		updatedItem.Icon = itemIcon.String
+	}
+	if itemColor.Valid {
+		updatedItem.Color = itemColor.String
+	}
+	updatedItem.Position = itemPosition
+
+	return updatedItem, nil
 }
 
 func (bi RepositoryImpl) DeleteItem(ctx context.Context, userId int, budgetId int) (bool, error) {

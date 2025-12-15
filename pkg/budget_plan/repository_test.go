@@ -252,37 +252,70 @@ func TestRepositoryImpl_StoreItem(t *testing.T) {
 }
 
 func TestRepositoryImpl_UpdateItem(t *testing.T) {
-	// given
-	ctx, repo, userId := setupTestRepository(t)
-	plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-	itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
-		PlanId:            plan.Id,
-		Name:              "Original",
-		WeeklyDuration:    3600, // 1 hour in seconds
-		WeeklyOccurrences: 3,
-		Icon:              "old",
-		Color:             "#000000",
-		Position:          0,
+	t.Run("should update budget item properties", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
+		itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+			PlanId:            plan.Id,
+			Name:              "Original",
+			WeeklyDuration:    3600, // 1 hour in seconds
+			WeeklyOccurrences: 3,
+			Icon:              "old",
+			Color:             "#000000",
+			Position:          0,
+		})
+
+		// when
+		_, err := repo.UpdateItem(ctx, userId, BudgetItem{
+			Id:                itemId,
+			Name:              "Updated",
+			WeeklyDuration:    7200, // 2 hours in seconds
+			WeeklyOccurrences: 7,
+			Icon:              "new",
+			Color:             "#FFFFFF",
+		})
+
+		// then
+		assert.NoError(t, err)
+		storedPlan, _ := repo.GetPlan(ctx, userId, plan.Id)
+		assert.Equal(t, "Updated", storedPlan.Items[0].Name)
+		assert.Equal(t, 7, storedPlan.Items[0].WeeklyOccurrences)
+		assert.Equal(t, "#FFFFFF", storedPlan.Items[0].Color)
+		assert.Equal(t, "new", storedPlan.Items[0].Icon)
 	})
 
-	// when
-	ok, err := repo.UpdateItem(ctx, userId, BudgetItem{
-		Id:                itemId,
-		Name:              "Updated",
-		WeeklyDuration:    7200, // 2 hours in seconds
-		WeeklyOccurrences: 7,
-		Icon:              "new",
-		Color:             "#FFFFFF",
-	})
+	t.Run("should return updated item", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
+		itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+			PlanId:            plan.Id,
+			Name:              "Original",
+			WeeklyDuration:    3600, // 1 hour in seconds
+			WeeklyOccurrences: 3,
+			Icon:              "old",
+			Color:             "#000000",
+			Position:          0,
+		})
 
-	// then
-	assert.NoError(t, err)
-	assert.True(t, ok)
-	storedPlan, _ := repo.GetPlan(ctx, userId, plan.Id)
-	assert.Equal(t, "Updated", storedPlan.Items[0].Name)
-	assert.Equal(t, 7, storedPlan.Items[0].WeeklyOccurrences)
-	assert.Equal(t, "#FFFFFF", storedPlan.Items[0].Color)
-	assert.Equal(t, "new", storedPlan.Items[0].Icon)
+		// when
+		updatedItem, err := repo.UpdateItem(ctx, userId, BudgetItem{
+			Id:                itemId,
+			Name:              "Updated",
+			WeeklyDuration:    7200, // 2 hours in seconds
+			WeeklyOccurrences: 7,
+			Icon:              "new",
+			Color:             "#FFFFFF",
+		})
+
+		// then
+		assert.NoError(t, err)
+		assert.Equal(t, "Updated", updatedItem.Name)
+		assert.Equal(t, 7, updatedItem.WeeklyOccurrences)
+		assert.Equal(t, "#FFFFFF", updatedItem.Color)
+		assert.Equal(t, "new", updatedItem.Icon)
+	})
 }
 
 func TestRepositoryImpl_UpdateItemPosition(t *testing.T) {
@@ -404,4 +437,31 @@ func TestRepositoryImpl_GetCurrentPlan(t *testing.T) {
 		assert.Equal(t, "Plan 1 Item 1", storedPlan.Items[0].Name)
 		assert.Equal(t, "Plan 1 Item 2", storedPlan.Items[1].Name)
 	})
+}
+
+func TestRepositoryImpl_GetItem(t *testing.T) {
+	// given
+	ctx, repo, userId := setupTestRepository(t)
+	plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
+	itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+		PlanId:            plan.Id,
+		Name:              "Item 1",
+		WeeklyDuration:    30 * time.Minute,
+		WeeklyOccurrences: 2,
+		Icon:              "some-icon",
+		Color:             "#DDDDFF",
+		Position:          2,
+	})
+
+	// when
+	item, err := repo.GetItem(ctx, userId, itemId)
+
+	// then
+	assert.NoError(t, err)
+	assert.Equal(t, itemId, item.Id)
+	assert.Equal(t, "Item 1", item.Name)
+	assert.Equal(t, 30*time.Minute, item.WeeklyDuration)
+	assert.Equal(t, 2, item.WeeklyOccurrences)
+	assert.Equal(t, "#DDDDFF", item.Color)
+	assert.Equal(t, "some-icon", item.Icon)
 }

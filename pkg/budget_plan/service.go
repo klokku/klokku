@@ -21,7 +21,7 @@ type Service interface {
 	GetItem(ctx context.Context, id int) (BudgetItem, error)
 	CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error)
 	MoveItemAfter(ctx context.Context, planId, itemId, precedingId int) (bool, error)
-	UpdateItem(ctx context.Context, budget BudgetItem) (bool, error)
+	UpdateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error)
 	DeleteItem(ctx context.Context, id int) (bool, error)
 }
 
@@ -86,7 +86,6 @@ func (s *ServiceImpl) DeletePlan(ctx context.Context, planId int) (bool, error) 
 	return s.repo.DeletePlan(ctx, userId, planId)
 }
 
-// TODO test
 func (s *ServiceImpl) GetItem(ctx context.Context, id int) (BudgetItem, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
@@ -115,20 +114,15 @@ func (s *ServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (Budget
 	return budget, nil
 }
 
-// TODO test that it publish to event bus
-func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, error) {
+func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to get current user: %w", err)
+		return BudgetItem{}, fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	updated, err := s.repo.UpdateItem(ctx, userId, budget)
+	updatedItem, err := s.repo.UpdateItem(ctx, userId, budget)
 	if err != nil {
-		return false, err
-	}
-	if !updated {
-		log.Warnf("item not updated, probably because it does not exist (%d) or the user (%d) is not the owner", budget.Id, userId)
-		return false, fmt.Errorf("item not updated")
+		return BudgetItem{}, err
 	}
 
 	// This may fail, and because the transaction is already closed, the budget item is changed and this
@@ -140,14 +134,14 @@ func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (bool, 
 	err = s.eventBus.Publish(event_bus.NewEvent(
 		ctx,
 		"budget_plan.item.updated",
-		budget,
+		BudgetPlanItemUpdated(updatedItem),
 	))
 	if err != nil {
 		log.Errorf("failed to publish budget item update event: %v", err)
-		return false, err
+		return BudgetItem{}, err
 	}
 
-	return true, nil
+	return updatedItem, nil
 }
 
 func (s *ServiceImpl) DeleteItem(ctx context.Context, id int) (bool, error) {

@@ -5,19 +5,34 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var ctx = context.WithValue(context.Background(), user.UserIDKey, 1)
+var ctx = context.WithValue(context.Background(), user.UserKey, user.User{
+	Id:          10,
+	Uid:         uuid.NewString(),
+	Username:    "test-user-1",
+	DisplayName: "Test User 1",
+	PhotoUrl:    "",
+	Settings: user.Settings{
+		Timezone:          "Europe/Warsaw",
+		WeekFirstDay:      time.Monday,
+		EventCalendarType: user.KlokkuCalendar,
+		GoogleCalendar:    user.GoogleCalendarSettings{},
+	},
+})
 
 var budgetRepoStub = NewStubBudgetRepo()
+var eventBus = event_bus.NewEventBus()
 
 var service Service
 
 func setup(t *testing.T) func() {
-	service = NewBudgetPlanService(budgetRepoStub)
+	service = NewBudgetPlanService(budgetRepoStub, eventBus)
 	return func() {
 		t.Log("Teardown after test")
 		budgetRepoStub.Cleanup()
@@ -304,13 +319,12 @@ func TestServiceImpl_UpdateItem(t *testing.T) {
 		item.WeeklyDuration = time.Duration(4) * time.Hour
 
 		// when
-		updated, err := service.UpdateItem(ctx, item)
+		updatedItem, err := service.UpdateItem(ctx, item)
 
 		// then
 		assert.NoError(t, err)
-		assert.True(t, updated)
-		assert.Equal(t, "Updated", item.Name)
-		assert.Equal(t, time.Duration(4)*time.Hour, item.WeeklyDuration)
+		assert.Equal(t, "Updated", updatedItem.Name)
+		assert.Equal(t, time.Duration(4)*time.Hour, updatedItem.WeeklyDuration)
 	})
 
 	t.Run("should return error when context has no user", func(t *testing.T) {
@@ -323,6 +337,47 @@ func TestServiceImpl_UpdateItem(t *testing.T) {
 		// then
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get current user")
+	})
+
+	t.Run("should publish event to event bus when item is updated", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		plan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Test Plan"})
+		item, _ := service.CreateItem(ctx, BudgetItem{
+			PlanId:            plan.Id,
+			Name:              "Original",
+			WeeklyDuration:    time.Duration(2) * time.Hour,
+			WeeklyOccurrences: 3,
+			Icon:              "SomeIcon",
+			Color:             "#FF0000"})
+		item.Name = "Updated"
+		item.WeeklyDuration = time.Duration(4) * time.Hour
+
+		var publishedEvent event_bus.EventT[BudgetPlanItemUpdated]
+		event_bus.SubscribeTyped[BudgetPlanItemUpdated](
+			eventBus,
+			"budget_plan.item.updated",
+			func(e event_bus.EventT[BudgetPlanItemUpdated]) error {
+				publishedEvent = e
+				return nil
+			},
+		)
+
+		// when
+		_, err := service.UpdateItem(ctx, item)
+
+		// then
+		assert.NoError(t, err)
+		assert.NotNil(t, publishedEvent)
+		assert.Equal(t, item.Id, publishedEvent.Data.Id)
+		assert.Equal(t, item.Name, publishedEvent.Data.Name)
+		assert.Equal(t, item.WeeklyDuration, publishedEvent.Data.WeeklyDuration)
+		assert.Equal(t, item.WeeklyOccurrences, publishedEvent.Data.WeeklyOccurrences)
+		assert.Equal(t, item.Icon, publishedEvent.Data.Icon)
+		assert.Equal(t, item.Color, publishedEvent.Data.Color)
+
 	})
 }
 
@@ -419,5 +474,35 @@ func TestServiceImpl_MoveItemAfter(t *testing.T) {
 		// then
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get current user")
+	})
+}
+
+func TestServiceImpl_GetItem(t *testing.T) {
+	t.Run("should get an existing item", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		plan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Test Plan"})
+		item, _ := service.CreateItem(ctx, BudgetItem{
+			PlanId:            plan.Id,
+			Name:              "Original",
+			WeeklyDuration:    time.Duration(2) * time.Hour,
+			WeeklyOccurrences: 3,
+			Icon:              "SomeIcon",
+			Color:             "#FF0000",
+		})
+
+		// when
+		readItem, err := service.GetItem(ctx, item.Id)
+
+		// then
+		assert.NoError(t, err)
+		assert.Equal(t, item.Id, readItem.Id)
+		assert.Equal(t, item.Name, readItem.Name)
+		assert.Equal(t, item.WeeklyDuration, readItem.WeeklyDuration)
+		assert.Equal(t, item.WeeklyOccurrences, readItem.WeeklyOccurrences)
+		assert.Equal(t, item.Icon, readItem.Icon)
+		assert.Equal(t, item.Color, readItem.Color)
 	})
 }

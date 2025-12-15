@@ -101,18 +101,18 @@ func (s *RepositoryStub) GetPlan(ctx context.Context, userId int, planId int) (B
 	return BudgetPlan{}, ErrPlanNotFound
 }
 
-func (s *RepositoryStub) UpdateItem(ctx context.Context, userId int, item BudgetItem) (bool, error) {
+func (s *RepositoryStub) UpdateItem(ctx context.Context, userId int, item BudgetItem) (BudgetItem, error) {
 	planId := item.PlanId
 	if plan, exists := s.plans[planId]; exists {
 		for i, it := range plan.Items {
 			if it.Id == item.Id {
 				plan.Items[i] = item
 				s.plans[planId] = plan
-				return true, nil
+				return item, nil
 			}
 		}
 	}
-	return false, nil
+	return BudgetItem{}, nil
 }
 
 func (s *RepositoryStub) DeleteItem(ctx context.Context, userId int, budgetId int) (bool, error) {
@@ -128,8 +128,12 @@ func (s *RepositoryStub) DeleteItem(ctx context.Context, userId int, budgetId in
 	return false, nil
 }
 
-func (s *RepositoryStub) UpdateItemPosition(ctx context.Context, userId int, budget BudgetItem) (bool, error) {
-	return s.UpdateItem(ctx, userId, budget)
+func (s *RepositoryStub) UpdateItemPosition(ctx context.Context, userId int, item BudgetItem) (bool, error) {
+	updateItem, err := s.UpdateItem(ctx, userId, item)
+	if err != nil {
+		return false, err
+	}
+	return updateItem.Position == item.Position, err
 }
 
 func (s *RepositoryStub) FindMaxPlanItemPosition(ctx context.Context, planId int, userId int) (int, error) {
