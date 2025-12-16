@@ -39,17 +39,31 @@ type ServiceImpl struct {
 
 func NewService(repo Repository, bpReader BudgetPlanReader, eventBus *event_bus.EventBus) Service {
 	service := &ServiceImpl{repo, bpReader, eventBus}
-	// TODO I need to also create WeeklyPlanItems when first calendar event in the given week is created
-	event_bus.SubscribeTyped[budget_plan.BudgetPlanItemUpdated](
+	event_bus.SubscribeTyped[event_bus.BudgetPlanItemUpdated](
 		eventBus,
 		"budget_plan.item.updated",
-		func(e event_bus.EventT[budget_plan.BudgetPlanItemUpdated]) error {
+		func(e event_bus.EventT[event_bus.BudgetPlanItemUpdated]) error {
 			log.Debugf("received budget plan item updated event: %v", e)
 			countUpdated, err := service.handleBudgetPlanItemUpdated(e.Context(), e.Data)
 			if err != nil {
-				log.Errorf("failed to update budget plan item: %v", err)
+				log.Errorf("failed to handle budget plan item update: %v", err)
+				return err
 			}
 			log.Debugf("updated weekly plan items: %d", countUpdated)
+
+			return nil
+		},
+	)
+	event_bus.SubscribeTyped[event_bus.CalendarEventCreated](
+		eventBus,
+		"calendar.event.updated",
+		func(e event_bus.EventT[event_bus.CalendarEventCreated]) error {
+			log.Debugf("received calendar event updated event: %v", e)
+			err := service.handleCalendarEventChanged(e.Context(), e.Data)
+			if err != nil {
+				log.Errorf("failed to handle calendar event change: %v", err)
+				return err
+			}
 
 			return nil
 		},
@@ -249,7 +263,7 @@ func (s *ServiceImpl) ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate t
 	return resetItems, nil
 }
 
-func (s *ServiceImpl) handleBudgetPlanItemUpdated(ctx context.Context, budgetItem budget_plan.BudgetPlanItemUpdated) (int, error) {
+func (s *ServiceImpl) handleBudgetPlanItemUpdated(ctx context.Context, budgetItem event_bus.BudgetPlanItemUpdated) (int, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get current user: %w", err)
@@ -269,4 +283,39 @@ func budgetPlanItemToWeekPlanItem(bpItem budget_plan.BudgetItem, weekNumber Week
 		Notes:             "",
 		Position:          bpItem.Position,
 	}
+}
+
+func (s *ServiceImpl) handleCalendarEventChanged(ctx context.Context, event event_bus.CalendarEventCreated) error {
+	currentUser, err := user.CurrentUser(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	week := WeekNumberFromDate(event.StartTime, currentUser.Settings.WeekFirstDay)
+	err = s.repo.WithTransaction(ctx, func(repo Repository) error {
+		transactionalService := ServiceImpl{repo, s.bpReader, s.eventBus}
+		weeklyPlanItems, err := repo.GetItemsForWeek(ctx, currentUser.Id, week)
+		if err != nil {
+			return err
+		}
+		if len(weeklyPlanItems) > 0 {
+			// items already exist for the given week, nothing to do
+			return nil
+		}
+		item, err := s.bpReader.GetItem(ctx, event.BudgetItemId)
+		if err != nil {
+			return err
+		}
+
+		_, err = transactionalService.createItemsFromBudgetPlan(ctx, item.PlanId, week)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -608,7 +608,7 @@ func TestServiceImpl_handleBudgetPlanItemUpdated(t *testing.T) {
 		require.NoError(t, err, "failed to create items for week 2")
 
 		// Simulate budget plan item update
-		updatedBudgetItem := budget_plan.BudgetPlanItemUpdated{
+		updatedBudgetItem := event_bus.BudgetPlanItemUpdated{
 			Id:    101,
 			Name:  "Updated Work",
 			Icon:  "💼",
@@ -653,7 +653,7 @@ func TestServiceImpl_handleBudgetPlanItemUpdated(t *testing.T) {
 		teardown := setup(t)
 		defer teardown()
 
-		updatedBudgetItem := budget_plan.BudgetPlanItemUpdated{
+		updatedBudgetItem := event_bus.BudgetPlanItemUpdated{
 			Id:    999,
 			Name:  "Updated Work",
 			Icon:  "💼",
@@ -664,5 +664,64 @@ func TestServiceImpl_handleBudgetPlanItemUpdated(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, 0, count)
+	})
+}
+
+func TestServiceImpl_handleCalendarEventChanged(t *testing.T) {
+	t.Run("creates weekly items", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		location, err := time.LoadLocation("Europe/Warsaw")
+		require.NoError(t, err)
+		nextWeekMonday := time.Date(2025, 1, 17, 0, 0, 0, 0, location)
+		calendarEvent := event_bus.CalendarEventCreated{
+			UID:          uuid.NewString(),
+			Summary:      "Calendar event 1",
+			StartTime:    nextWeekMonday,
+			EndTime:      nextWeekMonday.Add(1 * time.Hour),
+			BudgetItemId: 122,
+		}
+		item1 := budget_plan.BudgetItem{
+			Id:                122,
+			PlanId:            3,
+			Name:              "Plan item 122",
+			WeeklyDuration:    30 * time.Hour,
+			WeeklyOccurrences: 5,
+			Icon:              "some-icon",
+			Color:             "#FF5733",
+			Position:          4,
+		}
+		item2 := budget_plan.BudgetItem{
+			Id:                128,
+			PlanId:            3,
+			Name:              "Plan item 128",
+			WeeklyDuration:    13 * time.Hour,
+			WeeklyOccurrences: 2,
+			Icon:              "some-icon",
+			Color:             "#FF5733",
+			Position:          5,
+		}
+		plan := budget_plan.BudgetPlan{
+			Id:        3,
+			Name:      "Test Plan 3",
+			IsCurrent: true,
+			Items:     []budget_plan.BudgetItem{item1, item2},
+		}
+		bpReaderStub.SetPlan(plan)
+		bpReaderStub.SetItem(item1)
+		bpReaderStub.SetItem(item2)
+		bpReaderStub.SetCurrentPlan(plan)
+
+		// when
+		eventBus.Publish(event_bus.NewEvent(ctx, "calendar.event.created", calendarEvent))
+
+		// then
+		items, err := service.GetItemsForWeek(ctx, nextWeekMonday)
+		require.NoError(t, err)
+		require.Len(t, items, 2)
+		assert.Equal(t, calendarEvent.BudgetItemId, items[0].BudgetItemId)
+		assert.Equal(t, item2.Id, items[1].BudgetItemId)
 	})
 }

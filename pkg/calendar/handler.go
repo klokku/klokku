@@ -1,33 +1,28 @@
 package calendar
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/rest"
-	"github.com/klokku/klokku/pkg/budget_plan"
 )
 
 type Handler struct {
-	calendar        *Service
-	budgetsProvider BudgetsProviderFunc
+	calendar *Service
 }
-
-type BudgetsProviderFunc func(ctx context.Context, includeInactive bool) ([]budget_plan.BudgetItem, error)
 
 type EventDTO struct {
-	UID       string    `json:"uid"`
-	Summary   string    `json:"summary"`
-	StartTime time.Time `json:"start"`
-	EndTime   time.Time `json:"end"`
-	BudgetId  int       `json:"budgetId"`
+	UID          string    `json:"uid"`
+	Summary      string    `json:"summary"`
+	StartTime    time.Time `json:"start"`
+	EndTime      time.Time `json:"end"`
+	BudgetItemId int       `json:"budgetItemId"`
 }
 
-func NewHandler(s *Service, bp BudgetsProviderFunc) *Handler {
-	return &Handler{s, bp}
+func NewHandler(s *Service) *Handler {
+	return &Handler{s}
 }
 
 func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
@@ -95,38 +90,26 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	budgets, err := h.budgetsProvider(r.Context(), false)
+
+	addedEvents, err := h.calendar.AddStickyEvent(r.Context(), event)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var budgetInfo *budget_plan.BudgetItem
-	for _, b := range budgets {
-		if b.Id == event.Metadata.BudgetId {
-			budgetInfo = &b
-			break
+
+	var eventDTOs []EventDTO
+	for _, e := range addedEvents {
+		addedEventDTO, err := eventToDTO(e)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-	}
-	if budgetInfo == nil {
-		http.Error(w, "Invalid budget id", http.StatusBadRequest)
-		return
-	}
-	event.Summary = budgetInfo.Name
-
-	addedEvent, err := h.calendar.AddStickyEvent(r.Context(), event)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		eventDTOs = append(eventDTOs, addedEventDTO)
 	}
 
-	addedEventDTO, err := eventToDTO(*addedEvent)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(addedEventDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(eventDTOs); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -144,37 +127,24 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	budgets, err := h.budgetsProvider(r.Context(), false)
+	modifiedEvents, err := h.calendar.ModifyStickyEvent(r.Context(), event)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	var budgetInfo *budget_plan.BudgetItem
-	for _, b := range budgets {
-		if b.Id == event.Metadata.BudgetId {
-			budgetInfo = &b
-			break
+	var eventDTOs []EventDTO
+	for _, e := range modifiedEvents {
+		modifiedEventDTO, err := eventToDTO(e)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		eventDTOs = append(eventDTOs, modifiedEventDTO)
 	}
-	if budgetInfo == nil {
-		http.Error(w, "Invalid budget id", http.StatusBadRequest)
-		return
-	}
-	event.Summary = budgetInfo.Name
 
-	modifiedEvent, err := h.calendar.ModifyStickyEvent(r.Context(), event)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	modifiedEventDTO, err := eventToDTO(*modifiedEvent)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(modifiedEventDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(eventDTOs); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -195,11 +165,11 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 func eventToDTO(e Event) (EventDTO, error) {
 	return EventDTO{
-		UID:       e.UID,
-		Summary:   e.Summary,
-		StartTime: e.StartTime,
-		EndTime:   e.EndTime,
-		BudgetId:  e.Metadata.BudgetId,
+		UID:          e.UID,
+		Summary:      e.Summary,
+		StartTime:    e.StartTime,
+		EndTime:      e.EndTime,
+		BudgetItemId: e.Metadata.BudgetItemId,
 	}, nil
 }
 
@@ -209,6 +179,6 @@ func dtoToEvent(e EventDTO) (Event, error) {
 		Summary:   e.Summary,
 		StartTime: e.StartTime,
 		EndTime:   e.EndTime,
-		Metadata:  EventMetadata{BudgetId: e.BudgetId},
+		Metadata:  EventMetadata{BudgetItemId: e.BudgetItemId},
 	}, nil
 }

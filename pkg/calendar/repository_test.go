@@ -2,36 +2,54 @@ package calendar
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/klokku/klokku/internal/test_utils"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-// setupTestRepository creates a test repository with a fresh database
-func setupTestRepository(t *testing.T) *RepositoryImpl {
-	db := test_utils.SetupTestDB(t)
-	repository := NewRepository(db)
-	return repository
+var pgContainer *postgres.PostgresContainer
+var openDb func() *pgx.Conn
+
+func TestMain(m *testing.M) {
+	pgContainer, openDb = test_utils.TestWithDB()
+	defer func() {
+		if err := testcontainers.TerminateContainer(pgContainer); err != nil {
+			log.Errorf("failed to terminate container: %s", err)
+		}
+	}()
+	code := m.Run()
+	os.Exit(code)
 }
 
-func setupRepositoryTest(t *testing.T) (*RepositoryImpl, context.Context, int) {
-	repository := setupTestRepository(t)
+func setupTestRepository(t *testing.T) (context.Context, Repository, int) {
 	ctx := context.Background()
+	db := openDb()
+	repository := NewRepository(db)
+	t.Cleanup(func() {
+		db.Close(ctx)
+		err := pgContainer.Restore(ctx)
+		require.NoError(t, err)
+	})
 	userId := 1
-	return repository, ctx, userId
+	return ctx, repository, userId
 }
 
 // createTestEvent creates an event with the given parameters
-func createTestEvent(summary string, start, end time.Time, budgetId int) Event {
+func createTestEvent(summary string, start, end time.Time, budgetItemId int) Event {
 	return Event{
 		Summary:   summary,
 		StartTime: start,
 		EndTime:   end,
-		Metadata:  EventMetadata{BudgetId: budgetId},
+		Metadata:  EventMetadata{BudgetItemId: budgetItemId},
 	}
 }
 
@@ -40,7 +58,7 @@ func assertEventEqual(t *testing.T, expected Event, actual Event, ignoreUID bool
 	assert.Equal(t, expected.Summary, actual.Summary)
 	assert.Equal(t, expected.StartTime, actual.StartTime)
 	assert.Equal(t, expected.EndTime, actual.EndTime)
-	assert.Equal(t, expected.Metadata.BudgetId, actual.Metadata.BudgetId)
+	assert.Equal(t, expected.Metadata.BudgetItemId, actual.Metadata.BudgetItemId)
 
 	if !ignoreUID && expected.UID != "" {
 		assert.Equal(t, expected.UID, actual.UID)
@@ -49,18 +67,20 @@ func assertEventEqual(t *testing.T, expected Event, actual Event, ignoreUID bool
 
 func TestRepositoryImpl_StoreEvent(t *testing.T) {
 	// Setup
-	repository, ctx, userId := setupRepositoryTest(t)
+	ctx, repository, userId := setupTestRepository(t)
 
 	// Given
 	baseTime := time.Now().Truncate(time.Millisecond)
 	testEvent := createTestEvent("Test Event", baseTime, baseTime.Add(time.Hour), 654)
 
 	// When
-	storedEventUid, err := repository.StoreEvent(ctx, userId, testEvent)
+	storedEvent, err := repository.StoreEvent(ctx, userId, testEvent)
 
 	// Then
 	require.NoError(t, err)
-	require.NotEqual(t, uuid.Nil, storedEventUid)
+	// Verify UID was generated
+	_, parseErr := uuid.Parse(storedEvent.UID)
+	require.NoError(t, parseErr)
 
 	// Verify event was stored correctly
 	storedEvents, err := repository.GetEvents(ctx, userId, baseTime, baseTime.Add(time.Hour))
@@ -69,14 +89,14 @@ func TestRepositoryImpl_StoreEvent(t *testing.T) {
 
 	// The stored event should match our original event plus have the generated UID
 	expectedEvent := testEvent
-	expectedEvent.UID = storedEventUid
+	expectedEvent.UID = storedEvent.UID
 
 	assertEventEqual(t, expectedEvent, storedEvents[0], false)
 }
 
 func TestRepositoryImpl_GetEventsEmptyResult(t *testing.T) {
 	// Setup
-	repository, ctx, userId := setupRepositoryTest(t)
+	ctx, repository, userId := setupTestRepository(t)
 
 	// When
 	queryStart := time.Now().Truncate(time.Millisecond)
@@ -168,7 +188,7 @@ func TestRepositoryImpl_GetEvents(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup
-			repository, ctx, userId := setupRepositoryTest(t)
+			ctx, repository, userId := setupTestRepository(t)
 
 			// Given
 			baseTime := time.Now().Truncate(time.Millisecond)
@@ -179,7 +199,7 @@ func TestRepositoryImpl_GetEvents(t *testing.T) {
 				1,
 			)
 
-			eventUID, err := repository.StoreEvent(ctx, userId, event)
+			stored, err := repository.StoreEvent(ctx, userId, event)
 			require.NoError(t, err)
 
 			// When
@@ -198,7 +218,7 @@ func TestRepositoryImpl_GetEvents(t *testing.T) {
 
 				// Check if the returned event matches the stored one
 				expected := event
-				expected.UID = eventUID
+				expected.UID = stored.UID
 
 				assertEventEqual(t, expected, fetchedEvents[0], false)
 			} else {
@@ -210,7 +230,7 @@ func TestRepositoryImpl_GetEvents(t *testing.T) {
 
 func TestRepositoryImpl_GetEventsMultipleEvents(t *testing.T) {
 	// Setup
-	repository, ctx, userId := setupRepositoryTest(t)
+	ctx, repository, userId := setupTestRepository(t)
 
 	// Given
 	baseTime := time.Now().Truncate(time.Millisecond)
@@ -223,11 +243,11 @@ func TestRepositoryImpl_GetEventsMultipleEvents(t *testing.T) {
 
 	// Store all events
 	for i, event := range events {
-		uid, err := repository.StoreEvent(ctx, userId, event)
+		stored, err := repository.StoreEvent(ctx, userId, event)
 		require.NoError(t, err)
 
 		// Update the UID in our reference events
-		events[i].UID = uid
+		events[i].UID = stored.UID
 	}
 
 	// When - query period contains only events 1 and 2
@@ -253,7 +273,7 @@ func TestRepositoryImpl_GetEventsMultipleEvents(t *testing.T) {
 
 func TestRepositoryImpl_GetLastEvents(t *testing.T) {
 	// Setup
-	repository, ctx, userId := setupRepositoryTest(t)
+	ctx, repository, userId := setupTestRepository(t)
 
 	// Given - Create events with different end times
 	now := time.Now().Truncate(time.Millisecond)
@@ -279,11 +299,11 @@ func TestRepositoryImpl_GetLastEvents(t *testing.T) {
 	allEvents = append(allEvents, futureEvents...)
 
 	for i, event := range allEvents {
-		uid, err := repository.StoreEvent(ctx, userId, event)
+		stored, err := repository.StoreEvent(ctx, userId, event)
 		require.NoError(t, err)
 
 		// Update the UID in our reference events
-		allEvents[i].UID = uid
+		allEvents[i].UID = stored.UID
 	}
 
 	// Test cases with different limits
@@ -358,7 +378,7 @@ func TestRepositoryImpl_GetLastEvents(t *testing.T) {
 
 func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 	// Setup
-	repository, ctx, userId := setupRepositoryTest(t)
+	ctx, repository, userId := setupTestRepository(t)
 
 	// Given - Create and store an initial event
 	baseTime := time.Now().Truncate(time.Millisecond)
@@ -370,9 +390,9 @@ func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 	)
 
 	// Store the event
-	eventUID, err := repository.StoreEvent(ctx, userId, initialEvent)
+	storedInitial, err := repository.StoreEvent(ctx, userId, initialEvent)
 	require.NoError(t, err)
-	require.NotEqual(t, uuid.Nil, eventUID)
+	require.NotEqual(t, uuid.Nil, storedInitial.UID)
 
 	// Verify the event was stored correctly
 	storedEvents, err := repository.GetEvents(ctx, userId, baseTime, baseTime.Add(time.Hour))
@@ -385,13 +405,13 @@ func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 		StartTime: baseTime.Add(15 * time.Minute),
 		EndTime:   baseTime.Add(45 * time.Minute),
 		Metadata: EventMetadata{
-			BudgetId: 456,
+			BudgetItemId: 456,
 		},
-		UID: eventUID,
+		UID: storedInitial.UID,
 	}
 
 	// When - Update the event
-	err = repository.UpdateEvent(ctx, userId, updatedEvent)
+	_, err = repository.UpdateEvent(ctx, userId, updatedEvent)
 
 	// Then
 	require.NoError(t, err)
@@ -407,7 +427,7 @@ func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 
 func TestRepositoryImpl_DeleteEvent(t *testing.T) {
 	// Setup
-	repository, ctx, userId := setupRepositoryTest(t)
+	ctx, repository, userId := setupTestRepository(t)
 
 	// Given - Create and store an initial event
 	baseTime := time.Now().Truncate(time.Millisecond)
@@ -427,11 +447,11 @@ func TestRepositoryImpl_DeleteEvent(t *testing.T) {
 	// Store the events
 	allEvents := []Event{event1, event2}
 	for i, event := range allEvents {
-		eventUID, err := repository.StoreEvent(ctx, userId, event)
+		stored, err := repository.StoreEvent(ctx, userId, event)
 		require.NoError(t, err)
 
 		// Update the UID in our reference events
-		allEvents[i].UID = eventUID
+		allEvents[i].UID = stored.UID
 	}
 
 	// When - Delete the event

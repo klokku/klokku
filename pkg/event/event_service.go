@@ -129,7 +129,7 @@ func prepareEventsForCalendar(event *Event, endTime time.Time, userTimezone stri
 		StartTime: event.StartTime,
 		EndTime:   endTime,
 		Metadata: calendar.EventMetadata{
-			BudgetId: event.Budget.Id,
+			BudgetItemId: event.Budget.Id,
 		},
 	}
 

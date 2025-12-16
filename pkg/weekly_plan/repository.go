@@ -2,7 +2,6 @@ package weekly_plan
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -55,7 +54,7 @@ func (r *repositoryImpl) WithTransaction(ctx context.Context, fn func(repo Repos
 	}
 	defer func() {
 		// The Rollback will be a no-op if the transaction was already committed
-		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
 			// Just log rollback errors
 			log.Errorf("rollback error: %v", rbErr)
 		}

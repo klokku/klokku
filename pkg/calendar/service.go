@@ -5,20 +5,29 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/weekly_plan"
+	log "github.com/sirupsen/logrus"
 )
 
+type PlanItemsProviderFunc func(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error)
+
 type Service struct {
-	repo Repository
+	repo              Repository
+	eventBus          *event_bus.EventBus
+	planItemsProvider PlanItemsProviderFunc
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, eventBus *event_bus.EventBus, planItemsProvider PlanItemsProviderFunc) *Service {
 	return &Service{
-		repo: repo,
+		repo:              repo,
+		eventBus:          eventBus,
+		planItemsProvider: planItemsProvider,
 	}
 }
 
-func (s *Service) AddEvent(ctx context.Context, event Event) (*Event, error) {
+func (s *Service) AddEvent(ctx context.Context, event Event) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -28,17 +37,109 @@ func (s *Service) AddEvent(ctx context.Context, event Event) (*Event, error) {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	eventUid, err := s.repo.StoreEvent(ctx, userId, event)
+	var storedEvents []Event
+	err = s.repo.WithTransaction(ctx, func(repo Repository) error {
+		currentUser, err := user.CurrentUser(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get current user: %w", err)
+		}
+		events, err := splitEventIfNeeded(&event, currentUser.Settings.Timezone)
+		if err != nil {
+			return err
+		}
+		for _, e := range events {
+			planItemName, err := s.getEventName(err, ctx, e.StartTime, e.Metadata.BudgetItemId)
+			if err != nil {
+				return err
+			}
+			e.Summary = planItemName
+
+			storedEvent, err := repo.StoreEvent(ctx, userId, e)
+			if err != nil {
+				return err
+			}
+			storedEvents = append(storedEvents, storedEvent)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to store event: %w", err)
+		return nil, fmt.Errorf("failed to perform transaction: %w", err)
 	}
 
-	event.UID = eventUid
+	for _, e := range storedEvents {
+		err = s.eventBus.Publish(event_bus.NewEvent(ctx, "calendar.event.created", event_bus.CalendarEventCreated{
+			UID:          e.UID,
+			Summary:      e.Summary,
+			StartTime:    e.StartTime,
+			EndTime:      e.EndTime,
+			BudgetItemId: e.Metadata.BudgetItemId,
+		}))
+		if err != nil {
+			return nil, fmt.Errorf("failed to publish event creation: %w", err)
+		}
+	}
 
-	return &event, nil
+	return storedEvents, nil
 }
 
-func (s *Service) AddStickyEvent(ctx context.Context, event Event) (*Event, error) {
+func splitEventIfNeeded(event *Event, userTimezone string) ([]Event, error) {
+	location, err := time.LoadLocation(userTimezone)
+	if err != nil {
+		err := fmt.Errorf("could not load location for timezone %s", userTimezone)
+		log.Error(err)
+		return nil, err
+	}
+	if crossesDateBoundary(event.StartTime, event.EndTime, location) {
+		log.Debug("Event crosses date boundary, splitting it into two events")
+		eventA := Event{
+			UID:       event.UID,
+			Summary:   event.Summary,
+			StartTime: event.StartTime,
+			EndTime:   endOfDay(event.StartTime, location),
+			Metadata:  event.Metadata,
+		}
+		eventB := Event{
+			Summary:   event.Summary,
+			StartTime: startOfNextDay(event.StartTime, location),
+			EndTime:   event.EndTime,
+			Metadata:  event.Metadata,
+		}
+		resultEvents := []Event{eventA}
+		splitEventB, err := splitEventIfNeeded(&eventB, userTimezone)
+		if err != nil {
+			return nil, err
+		}
+		return append(resultEvents, splitEventB...), nil
+	} else {
+		return []Event{
+			{
+				UID:       event.UID,
+				Summary:   event.Summary,
+				StartTime: event.StartTime,
+				EndTime:   event.EndTime,
+				Metadata:  event.Metadata,
+			},
+		}, nil
+	}
+}
+
+func crossesDateBoundary(start, end time.Time, location *time.Location) bool {
+	startDate := start.In(location).YearDay()
+	endDate := end.In(location).YearDay()
+
+	return startDate != endDate
+}
+
+func endOfDay(t time.Time, location *time.Location) time.Time {
+	day := t.In(location)
+	return time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 999999999, location)
+}
+func startOfNextDay(t time.Time, location *time.Location) time.Time {
+	day := t.In(location)
+	return time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, location)
+}
+
+func (s *Service) AddStickyEvent(ctx context.Context, event Event) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -48,28 +149,28 @@ func (s *Service) AddStickyEvent(ctx context.Context, event Event) (*Event, erro
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}
 	eventsToModify, eventsToDelete, eventsToCreate := calculateStickyEventsChanges(overlappingEvents, event)
-	var newEvent *Event
+	var newEvents []Event
 	err = s.repo.WithTransaction(ctx, func(repo Repository) error {
-		s := NewService(repo)
-		for _, event := range eventsToModify {
-			_, err := s.ModifyEvent(ctx, event)
+		s := NewService(repo, s.eventBus, s.planItemsProvider)
+		for _, e := range eventsToModify {
+			_, err := s.ModifyEvent(ctx, e)
 			if err != nil {
 				return fmt.Errorf("failed to update event: %w", err)
 			}
 		}
-		for _, event := range eventsToDelete {
-			err := s.DeleteEvent(ctx, event.UID)
+		for _, e := range eventsToDelete {
+			err := s.DeleteEvent(ctx, e.UID)
 			if err != nil {
 				return fmt.Errorf("failed to delete event: %w", err)
 			}
 		}
-		for _, event := range eventsToCreate {
-			_, err := s.AddEvent(ctx, event)
+		for _, e := range eventsToCreate {
+			_, err := s.AddEvent(ctx, e)
 			if err != nil {
 				return fmt.Errorf("failed to add event: %w", err)
 			}
 		}
-		newEvent, err = s.AddEvent(ctx, event)
+		newEvents, err = s.AddEvent(ctx, event)
 		if err != nil {
 			return fmt.Errorf("failed to add event: %w", err)
 		}
@@ -79,7 +180,7 @@ func (s *Service) AddStickyEvent(ctx context.Context, event Event) (*Event, erro
 		return nil, fmt.Errorf("failed to perform transaction: %w", err)
 	}
 
-	return newEvent, nil
+	return newEvents, nil
 }
 
 func (s *Service) GetEvents(ctx context.Context, from time.Time, to time.Time) ([]Event, error) {
@@ -91,7 +192,7 @@ func (s *Service) GetEvents(ctx context.Context, from time.Time, to time.Time) (
 	return s.repo.GetEvents(ctx, userId, from, to)
 }
 
-func (s *Service) ModifyEvent(ctx context.Context, event Event) (*Event, error) {
+func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -100,14 +201,73 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) (*Event, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
 	}
-	err = s.repo.UpdateEvent(ctx, userId, event)
+	var updatedEvents []Event
+	err = s.repo.WithTransaction(ctx, func(repo Repository) error {
+		currentUser, err := user.CurrentUser(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get current user: %w", err)
+		}
+		events, err := splitEventIfNeeded(&event, currentUser.Settings.Timezone)
+		if err != nil {
+			return err
+		}
+		eventToUpdate := events[0]
+		eventsToAdd := events[1:]
+
+		planItemName, err := s.getEventName(err, ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
+		if err != nil {
+			return err
+		}
+		eventToUpdate.Summary = planItemName
+
+		updatedEvent, err := repo.UpdateEvent(ctx, userId, eventToUpdate)
+		if err != nil {
+			log.Errorf("failed to update event: %v", err)
+			return err
+		}
+		updatedEvents = append(updatedEvents, updatedEvent)
+		for _, e := range eventsToAdd {
+			planItemName, err := s.getEventName(err, ctx, e.StartTime, e.Metadata.BudgetItemId)
+			if err != nil {
+				return err
+			}
+			e.Summary = planItemName
+			newEvent, err := repo.StoreEvent(ctx, userId, e)
+			if err != nil {
+				log.Errorf("failed to store event: %v", err)
+				return err
+			}
+			updatedEvents = append(updatedEvents, newEvent)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update event: %w", err)
+		return nil, fmt.Errorf("failed to perform transaction: %w", err)
 	}
-	return &event, nil
+
+	return updatedEvents, nil
 }
 
-func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) (*Event, error) {
+func (s *Service) getEventName(err error, ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
+	planItems, err := s.planItemsProvider(ctx, startTime)
+	if err != nil {
+		log.Errorf("failed to get plan items: %v", err)
+		return "", err
+	}
+	var planItemInfo *weekly_plan.WeeklyPlanItem
+	for _, planItem := range planItems {
+		if planItem.BudgetItemId == budgetItemId {
+			planItemInfo = &planItem
+			break
+		}
+	}
+	if planItemInfo == nil {
+		return "", fmt.Errorf("invalid budget item id")
+	}
+	return planItemInfo.Name, nil
+}
+
+func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -117,29 +277,29 @@ func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) (*Event, e
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}
 	eventsToModify, eventsToDelete, eventsToCreate := calculateStickyEventsChanges(overlappingEvents, event)
-	var modifiedEvent *Event
+	var modifiedEvents []Event
 	err = s.repo.WithTransaction(ctx, func(repo Repository) error {
-		s := NewService(repo)
-		for _, event := range eventsToModify {
-			_, err := s.ModifyEvent(ctx, event)
+		s := NewService(repo, s.eventBus, s.planItemsProvider)
+		for _, e := range eventsToModify {
+			_, err := s.ModifyEvent(ctx, e)
 			if err != nil {
 				return fmt.Errorf("failed to update event: %w", err)
 			}
 		}
-		for _, event := range eventsToDelete {
-			err := s.DeleteEvent(ctx, event.UID)
+		for _, e := range eventsToDelete {
+			err := s.DeleteEvent(ctx, e.UID)
 			if err != nil {
 				return fmt.Errorf("failed to delete event: %w", err)
 			}
 		}
-		for _, event := range eventsToCreate {
-			_, err := s.AddEvent(ctx, event)
+		for _, e := range eventsToCreate {
+			_, err := s.AddEvent(ctx, e)
 			if err != nil {
 				return fmt.Errorf("failed to add event: %w", err)
 			}
 		}
 
-		modifiedEvent, err = s.ModifyEvent(ctx, event)
+		modifiedEvents, err = s.ModifyEvent(ctx, event)
 		if err != nil {
 			return fmt.Errorf("failed to modify event: %w", err)
 		}
@@ -149,7 +309,7 @@ func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) (*Event, e
 		return nil, fmt.Errorf("failed to perform transaction: %w", err)
 	}
 
-	return modifiedEvent, nil
+	return modifiedEvents, nil
 }
 
 func calculateStickyEventsChanges(overlappingEvents []Event, event Event) ([]Event, []Event, []Event) {
@@ -209,8 +369,8 @@ func validateEvent(event Event) error {
 	if !event.EndTime.After(event.StartTime) {
 		return fmt.Errorf("end time must be after start time")
 	}
-	if event.Summary == "" {
-		return fmt.Errorf("summary cannot be empty")
+	if event.Metadata.BudgetItemId == 0 {
+		return fmt.Errorf("budget item id cannot be zero")
 	}
 	return nil
 }

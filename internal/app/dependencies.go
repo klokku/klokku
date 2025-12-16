@@ -35,7 +35,7 @@ type Dependencies struct {
 	WeeklyPlanService weekly_plan.Service
 	WeeklyPlanHandler *weekly_plan.Handler
 
-	KlokkuCalendarRepository *calendar.RepositoryImpl
+	KlokkuCalendarRepository calendar.Repository
 	KlokkuCalendarService    *calendar.Service
 	KlokkuCalendarHandler    *calendar.Handler
 

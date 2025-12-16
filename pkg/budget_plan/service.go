@@ -134,7 +134,16 @@ func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (Budget
 	err = s.eventBus.Publish(event_bus.NewEvent(
 		ctx,
 		"budget_plan.item.updated",
-		BudgetPlanItemUpdated(updatedItem),
+		event_bus.BudgetPlanItemUpdated{
+			Id:                updatedItem.Id,
+			PlanId:            updatedItem.PlanId,
+			Name:              updatedItem.Name,
+			WeeklyDuration:    updatedItem.WeeklyDuration,
+			WeeklyOccurrences: updatedItem.WeeklyOccurrences,
+			Icon:              updatedItem.Icon,
+			Color:             updatedItem.Color,
+			Position:          updatedItem.Position,
+		},
 	))
 	if err != nil {
 		log.Errorf("failed to publish budget item update event: %v", err)

@@ -70,7 +70,6 @@ CREATE TABLE calendar_event
     start_time          TIMESTAMPTZ NOT NULL,
     end_time            TIMESTAMPTZ NOT NULL,
     budget_item_id      INTEGER     NOT NULL,
-    weekly_plan_item_id INTEGER     NOT NULL REFERENCES weekly_plan_item (id),
     user_id             INTEGER     NOT NULL
 );
 CREATE INDEX calendar_user_id_event_start_end_idx ON calendar_event (user_id, start_time, end_time);
