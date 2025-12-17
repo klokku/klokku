@@ -2,99 +2,94 @@ package stats
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget_override"
-	"github.com/klokku/klokku/pkg/budget_plan"
+	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/event"
 	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/weekly_plan"
 	log "github.com/sirupsen/logrus"
 )
 
 type StatsService interface {
-	GetStats(ctx context.Context, from time.Time, to time.Time) (StatsSummary, error)
+	GetStats(ctx context.Context, weekTime time.Time) (StatsSummary, error)
 }
 
 type StatsServiceImpl struct {
-	eventService       event.EventService
-	eventStatsService  event.EventStatsService
-	budgetRepo         budget_plan.Repository
-	budgetOverrideRepo budget_override.BudgetOverrideRepo
-	clock              utils.Clock
+	currentEventProvider currentEventProvider
+	weeklyPlanService    weeklyPlanItemsReader
+	calendar             calendarEventsReader
+	clock                utils.Clock
 }
 
-func NewStatsServiceImpl(
-	eventService event.EventService,
-	eventStatsService event.EventStatsService,
-	budgetRepo budget_plan.Repository,
-	budgetOverrideRepo budget_override.BudgetOverrideRepo,
-) *StatsServiceImpl {
+type currentEventProvider interface {
+	FindCurrentEvent(ctx context.Context) (*event.Event, error)
+}
+
+type weeklyPlanItemsReader interface {
+	GetItemsForWeek(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error)
+}
+
+type calendarEventsReader interface {
+	GetEvents(ctx context.Context, from time.Time, to time.Time) ([]calendar.Event, error)
+}
+
+func NewService(
+	currentEventProvider currentEventProvider,
+	weeklyPlanService weeklyPlanItemsReader,
+	calendar calendarEventsReader,
+) StatsService {
 	return &StatsServiceImpl{
-		eventService:       eventService,
-		eventStatsService:  eventStatsService,
-		budgetRepo:         budgetRepo,
-		budgetOverrideRepo: budgetOverrideRepo,
-		clock:              &utils.SystemClock{},
+		currentEventProvider: currentEventProvider,
+		weeklyPlanService:    weeklyPlanService,
+		calendar:             calendar,
+		clock:                &utils.SystemClock{},
 	}
 }
 
-func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time.Time) (StatsSummary, error) {
-	userId, err := user.CurrentId(ctx)
-	if err != nil {
-		return StatsSummary{}, fmt.Errorf("failed to get current user: %w", err)
-	}
-	budgets, err := s.budgetRepo.GetPlan(ctx, userId, true)
+func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (StatsSummary, error) {
+	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
 		return StatsSummary{}, err
 	}
-	log.Tracef("Budgets: %v", budgets)
 
-	// filter out inactive budgets
-	activeBudgets := make([]budget_plan.BudgetItem, 0, len(budgets))
-	for _, b := range budgets {
-		if b.IsActiveBetween(from, to) {
-			activeBudgets = append(activeBudgets, b)
-		}
-	}
+	// Currently supports only weekly stats. `weekTime` is used to find out which week.
+	from, to := weekTimeRange(weekTime, currentUser.Settings.WeekFirstDay)
 
-	overridesByBudgetId, err := s.getAllBudgetOverrides(ctx, from)
+	planItems, err := s.weeklyPlanService.GetItemsForWeek(ctx, from)
 	if err != nil {
 		return StatsSummary{}, err
 	}
-	log.Tracef("BudgetItem overrides: %v", overridesByBudgetId)
+	log.Tracef("Plan items: %v", planItems)
 
 	totalPlanned := time.Duration(0)
-	for _, b := range activeBudgets {
-		budgetTime := b.WeeklyDuration
-		if overridesByBudgetId[b.Id] != nil {
-			budgetTime = overridesByBudgetId[b.Id].WeeklyTime
-		}
-		log.Debugf("BudgetItem: %v, Time: %v, TimeWithOverride: %v", b.Name, b.WeeklyDuration, budgetTime)
-		totalPlanned += budgetTime
+	for _, item := range planItems {
+		totalPlanned += item.WeeklyDuration
 	}
 
-	currentEventBudgetId := 0
+	currentEventBudgetItemId := 0
 	currentEventTime := time.Duration(0)
 	if s.clock.Now().After(from) && s.clock.Now().Before(to) {
 		log.Debugf("Calculating stats for current week. Taking into account current event if any.")
-		currentEvent, err := s.eventService.FindCurrentEvent(ctx)
+		currentEvent, err := s.currentEventProvider.FindCurrentEvent(ctx)
 		if err != nil {
 			log.Warnf("Unable to find current event: %v. Stats will not include current event.", err)
 		}
 		if currentEvent != nil {
-			currentEventBudgetId = currentEvent.Budget.Id
+			currentEventBudgetItemId = currentEvent.Budget.Id
 			currentEventTime = s.clock.Now().Sub(currentEvent.StartTime)
 		}
 	}
 
-	eventStats, err := s.eventStatsService.GetStats(ctx, from, to)
+	calendarEvents, err := s.calendar.GetEvents(ctx, from, to)
 	if err != nil {
 		return StatsSummary{}, err
 	}
+	eventsDurationPerDay := s.eventsDurationPerDay(calendarEvents)
+	eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
 
-	statsByDate := make([]DailyStats, 0, len(eventStats.ByDate))
+	statsByDate := make([]DailyStats, 0, len(eventsDurationPerDay))
 	for date := from; !date.After(to); date = date.AddDate(0, 0, 1) {
 		isToday := sameDays(s.clock.Now(), date, date.Location())
 		todayCurrentEventTime := time.Duration(0)
@@ -102,8 +97,8 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 			todayCurrentEventTime = currentEventTime
 		}
 
-		dateBudgetDuration := eventStats.ByDate[date]
-		budgetsStats := prepareStatsByBudget(activeBudgets, nil, dateBudgetDuration, currentEventBudgetId, todayCurrentEventTime)
+		dateBudgetDuration := eventsDurationPerDay[date]
+		budgetsStats := prepareStatsByBudget(planItems, dateBudgetDuration, currentEventBudgetItemId, todayCurrentEventTime)
 		dateTotalTime := time.Duration(0)
 		for _, budgetStat := range budgetsStats {
 			dateTotalTime += budgetStat.Duration
@@ -114,15 +109,14 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	}
 
 	statsByBudget := prepareStatsByBudget(
-		activeBudgets,
-		overridesByBudgetId,
-		eventStats.ByBudget,
-		currentEventBudgetId,
+		planItems,
+		eventsDurationPerBudget,
+		currentEventBudgetItemId,
 		currentEventTime,
 	)
 
 	totalTime := time.Duration(0)
-	for _, budgetDuration := range eventStats.ByBudget {
+	for _, budgetDuration := range eventsDurationPerBudget {
 		totalTime += budgetDuration
 	}
 	totalTime += currentEventTime
@@ -130,36 +124,59 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, from time.Time, to time
 	return StatsSummary{
 		StartDate:      from,
 		EndDate:        to,
-		Days:           statsByDate,
-		Budgets:        statsByBudget,
+		PerDay:         statsByDate,
+		PerPlanItem:    statsByBudget,
 		TotalPlanned:   totalPlanned,
 		TotalTime:      totalTime,
 		TotalRemaining: totalPlanned - totalTime,
 	}, nil
 }
 
-func prepareStatsByBudget(
-	budgets []budget_plan.BudgetItem,
-	overridesByBudgetId map[int]*budget_override.BudgetOverride,
-	durationByBudgetId map[int]time.Duration,
-	currentEventBudgetId int,
-	currentEventTime time.Duration,
-) []BudgetStats {
+func (s *StatsServiceImpl) eventsDurationPerDay(events []calendar.Event) map[time.Time]map[int]time.Duration {
+	eventsByDate := make(map[time.Time]map[int]time.Duration)
+	for _, e := range events {
+		loc := e.StartTime.Location()
+		year, month, day := e.StartTime.In(loc).Date()
+		date := time.Date(year, month, day, 0, 0, 0, 0, loc)
+		if eventsByDate[date] == nil {
+			eventsByDate[date] = make(map[int]time.Duration)
+		}
+		eventsByDate[date][e.Metadata.BudgetItemId] += duration(e)
+	}
+	return eventsByDate
+}
 
-	statsByBudget := make([]BudgetStats, 0, len(budgets))
-	for _, b := range budgets {
-		budgetDuration := durationByBudgetId[b.Id]
-		budgetOverride := overridesByBudgetId[b.Id]
+func (s *StatsServiceImpl) eventsDurationPerBudget(events []calendar.Event) map[int]time.Duration {
+	eventsByBudget := make(map[int]time.Duration)
+	for _, e := range events {
+		eventsByBudget[e.Metadata.BudgetItemId] += duration(e)
+	}
+	return eventsByBudget
+}
+
+func duration(event calendar.Event) time.Duration {
+	return event.EndTime.Sub(event.StartTime)
+}
+
+func prepareStatsByBudget(
+	planItems []weekly_plan.WeeklyPlanItem,
+	durationByBudgetId map[int]time.Duration,
+	currentEventBudgetItemId int,
+	currentEventTime time.Duration,
+) []PlanItemStats {
+
+	statsByBudget := make([]PlanItemStats, 0, len(planItems))
+	for _, item := range planItems {
+		budgetDuration := durationByBudgetId[item.BudgetItemId]
 		budgetCurrentEventTime := time.Duration(0)
-		if b.Id == currentEventBudgetId {
+		if item.BudgetItemId == currentEventBudgetItemId {
 			budgetCurrentEventTime = currentEventTime
 		}
 
-		budgetStats := BudgetStats{
-			Budget:         b,
-			Duration:       budgetDuration + budgetCurrentEventTime,
-			Remaining:      calculateRemainingDuration(&b, budgetOverride, budgetDuration) - budgetCurrentEventTime,
-			BudgetOverride: budgetOverride,
+		budgetStats := PlanItemStats{
+			PlanItem:  item,
+			Duration:  budgetDuration + budgetCurrentEventTime,
+			Remaining: calculateRemainingDuration(&item, budgetDuration) - budgetCurrentEventTime,
 		}
 		statsByBudget = append(statsByBudget, budgetStats)
 	}
@@ -167,36 +184,25 @@ func prepareStatsByBudget(
 }
 
 func calculateRemainingDuration(
-	budget *budget_plan.BudgetItem,
-	override *budget_override.BudgetOverride,
+	planItem *weekly_plan.WeeklyPlanItem,
 	duration time.Duration,
 ) time.Duration {
-	weeklyTime := budget.WeeklyDuration
-	if override != nil {
-		weeklyTime = override.WeeklyTime
-	}
-
-	return weeklyTime - duration
-}
-
-func (s *StatsServiceImpl) getAllBudgetOverrides(ctx context.Context, startDate time.Time) (map[int]*budget_override.BudgetOverride, error) {
-	userId, err := user.CurrentId(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current user: %w", err)
-	}
-	overrides, err := s.budgetOverrideRepo.GetAllForWeek(ctx, userId, startDate)
-	if err != nil {
-		return nil, err
-	}
-	overridesMap := map[int]*budget_override.BudgetOverride{}
-	for _, override := range overrides {
-		overridesMap[override.BudgetID] = &override
-	}
-	return overridesMap, nil
+	return planItem.WeeklyDuration - duration
 }
 
 func sameDays(date1, date2 time.Time, loc *time.Location) bool {
 	year1, month1, day1 := date1.In(loc).Date()
 	year2, month2, day2 := date2.In(loc).Date()
 	return year1 == year2 && month1 == month2 && day1 == day2
+}
+
+func weekTimeRange(date time.Time, weekStartDay time.Weekday) (time.Time, time.Time) {
+	if weekStartDay < time.Sunday || weekStartDay > time.Saturday {
+		weekStartDay = time.Monday
+	}
+
+	delta := (int(date.Weekday()) - int(weekStartDay) + 7) % 7
+	weekStart := date.AddDate(0, 0, -delta)
+	weekEnd := weekStart.AddDate(0, 0, 7).Add(-time.Nanosecond)
+	return weekStart, weekEnd
 }

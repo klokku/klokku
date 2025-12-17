@@ -58,7 +58,7 @@ func (h *Handler) GetItems(w http.ResponseWriter, r *http.Request) {
 
 	itemsDTO := make([]WeeklyPlanItemDTO, 0, len(items))
 	for _, item := range items {
-		itemsDTO = append(itemsDTO, weeklyPlanItemToDTO(item))
+		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
 	}
 	if err := json.NewEncoder(w).Encode(itemsDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -125,7 +125,7 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(weeklyPlanItemToDTO(updatedItem)); err != nil {
+	if err := json.NewEncoder(w).Encode(WeeklyPlanItemToDTO(updatedItem)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -153,7 +153,7 @@ func (h *Handler) ResetItem(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := json.NewEncoder(w).Encode(weeklyPlanItemToDTO(itemAfterReset)); err != nil {
+	if err := json.NewEncoder(w).Encode(WeeklyPlanItemToDTO(itemAfterReset)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -182,7 +182,7 @@ func (h *Handler) ResetWeek(w http.ResponseWriter, r *http.Request) {
 	}
 	var itemsDTO []WeeklyPlanItemDTO
 	for _, item := range itemsAfterReset {
-		itemsDTO = append(itemsDTO, weeklyPlanItemToDTO(item))
+		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
 	}
 	if err := json.NewEncoder(w).Encode(itemsDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -190,7 +190,7 @@ func (h *Handler) ResetWeek(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func weeklyPlanItemToDTO(item WeeklyPlanItem) WeeklyPlanItemDTO {
+func WeeklyPlanItemToDTO(item WeeklyPlanItem) WeeklyPlanItemDTO {
 	return WeeklyPlanItemDTO{
 		Id:                item.Id,
 		BudgetItemId:      item.BudgetItemId,

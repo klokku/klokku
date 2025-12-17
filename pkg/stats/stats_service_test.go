@@ -5,224 +5,143 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget_override"
 	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/event"
 	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/weekly_plan"
+	"github.com/stretchr/testify/assert"
 )
 
-var ctx = context.WithValue(context.Background(), user.UserIDKey, 1)
+var location, _ = time.LoadLocation("Europe/Warsaw")
 var calendarStub = calendar.NewStubCalendar()
-var budgetRepoStub = budget_plan.NewStubBudgetRepo()
-var budgetRepoService = budget_plan.NewBudgetPlanService(budgetRepoStub)
-var budgetOverrideRepoStub = budget_override.NewStubBudgetOverrideRepo()
-var eventRepoStub = &event.StubEventRepository{}
-var userRepoStub = user.NewStubUserRepository()
-var userService = user.NewUserService(userRepoStub)
-var eventService = event.NewEventService(eventRepoStub, calendarStub, userService)
 var clock = &utils.MockClock{FixedNow: time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)}
-var eventsStatsService = event.NewEventStatsServiceImpl(calendarStub, clock)
-var statsService = StatsServiceImpl{
-	eventService:       eventService,
-	eventStatsService:  eventsStatsService,
-	budgetRepo:         budgetRepoStub,
-	budgetOverrideRepo: budgetOverrideRepoStub,
-	clock:              clock,
-}
+var weeklyPlanService = newWeeklyPlanItemsReaderStub()
+var currentEventStub = newCurrentEventProviderStub()
 
-func setup(t *testing.T) func() {
-	return func() {
+func setup(t *testing.T) (StatsService, context.Context, func()) {
+	service := &StatsServiceImpl{
+		currentEventProvider: currentEventStub,
+		weeklyPlanService:    weeklyPlanService,
+		calendar:             calendarStub,
+		clock:                clock,
+	}
+	ctx := user.WithUser(context.Background(), user.User{
+		Id:          1,
+		Uid:         uuid.NewString(),
+		Username:    "test-user-1",
+		DisplayName: "Test User 1",
+		PhotoUrl:    "",
+		Settings: user.Settings{
+			Timezone:          location.String(),
+			WeekFirstDay:      time.Monday,
+			EventCalendarType: user.KlokkuCalendar,
+			GoogleCalendar:    user.GoogleCalendarSettings{},
+		},
+	})
+
+	return service, ctx, func() {
 		t.Log("Teardown after test")
-		budgetRepoStub.Cleanup()
-		budgetOverrideRepoStub.Cleanup()
+		weeklyPlanService.reset()
+		currentEventStub.reset()
 		calendarStub.Cleanup()
-		eventRepoStub.Cleanup()
 	}
 }
 
 func TestStatsServiceImpl_GetStats(t *testing.T) {
-	teardown := setup(t)
+	statsService, ctx, teardown := setup(t)
 	defer teardown()
 
 	// given
-	startTime := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Date(2023, time.January, 7, 0, 0, 0, 0, time.UTC)
-	budget1, _ := budgetRepoService.CreateItem(ctx, budget_plan.BudgetItem{
+	startTime := time.Date(2023, time.January, 2, 0, 0, 0, 0, location)
+	endTime := time.Date(2023, time.January, 9, 0, 0, 0, 0, location).Add(-1 * time.Nanosecond)
+	planItem1 := weekly_plan.WeeklyPlanItem{
+		Id:             101,
+		BudgetItemId:   1,
 		Name:           "BudgetItem 1",
 		WeeklyDuration: time.Duration(120) * time.Minute,
-	})
-	budget2, _ := budgetRepoService.CreateItem(ctx, budget_plan.BudgetItem{
+	}
+	planItem2 := weekly_plan.WeeklyPlanItem{
+		Id:             102,
+		BudgetItemId:   2,
 		Name:           "BudgetItem 2",
 		WeeklyDuration: time.Duration(120) * time.Minute,
-	})
+	}
+	weeklyPlanService.setItems([]weekly_plan.WeeklyPlanItem{planItem1, planItem2})
 	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
 		Summary:   "BudgetItem 1",
 		StartTime: startTime,
 		EndTime:   startTime.Add(time.Hour),
-		Metadata:  calendar.EventMetadata{BudgetId: budget1.Id},
+		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
 	calendarStub.AddEvent(ctx, calendar.Event{ // 30 minutes
 		Summary:   "BudgetItem 2",
 		StartTime: startTime.Add(time.Hour),
 		EndTime:   startTime.Add(time.Hour).Add(30 * time.Minute),
-		Metadata:  calendar.EventMetadata{BudgetId: budget2.Id},
+		Metadata:  calendar.EventMetadata{BudgetItemId: planItem2.BudgetItemId},
 	})
 	calendarStub.AddEvent(ctx, calendar.Event{ // 90 minutes
 		Summary:   "BudgetItem 1",
 		StartTime: startTime.Add(90 * time.Minute),
 		EndTime:   startTime.Add(90 * time.Minute).Add(90 * time.Minute),
-		Metadata:  calendar.EventMetadata{BudgetId: budget1.Id},
+		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
 	secondDay := startTime.Add(24 * time.Hour)
 	calendarStub.AddEvent(ctx, calendar.Event{ // 75 minutes
 		Summary:   "BudgetItem 2",
 		StartTime: secondDay.Add(2 * time.Hour),
 		EndTime:   secondDay.Add(2 * time.Hour).Add(75 * time.Minute),
-		Metadata:  calendar.EventMetadata{BudgetId: budget2.Id},
+		Metadata:  calendar.EventMetadata{BudgetItemId: planItem2.BudgetItemId},
 	})
 
 	// when
-	stats, _ := statsService.GetStats(ctx, startTime, endTime)
+	stats, _ := statsService.GetStats(ctx, startTime)
 
 	// then
-	if stats.StartDate != startTime {
-		t.Errorf("stats.StartDate = %v, want %v", stats.StartDate, startTime)
-	}
-	if stats.EndDate != endTime {
-		t.Errorf("stats.EndDate = %v, want %v", stats.EndDate, endTime)
-	}
-	if len(stats.Days) != 7 {
-		t.Errorf("len(stats.Days) = %v, want %v", len(stats.Days), 7)
-	}
-	if len(stats.Budgets) != 2 {
-		t.Errorf("len(stats.Budgets) = %v, want %v", len(stats.Budgets), 2)
-	}
-	if stats.TotalTime != time.Duration(255)*time.Minute {
-		t.Errorf("stats.TotalTime = %v, want %v", stats.TotalTime, time.Duration(255)*time.Minute)
-	}
+	assert.NotNil(t, stats)
+	assert.Equal(t, startTime, stats.StartDate)
+	assert.Equal(t, endTime, stats.EndDate)
+	assert.Equal(t, 7, len(stats.PerDay))
+	assert.Equal(t, 2, len(stats.PerPlanItem))
+	assert.Equal(t, time.Duration(255)*time.Minute, stats.TotalTime)
 
 	// Check on Day 1
-	foundBudget1 := findBudgetByName(stats.Days[0].Budgets, "BudgetItem 1")
-	if foundBudget1.Duration != time.Duration(150)*time.Minute {
-		t.Errorf("foundBudget1.Duration = %v, want %v", foundBudget1.Duration, time.Duration(150)*time.Minute)
-	}
-	foundBudget2 := findBudgetByName(stats.Days[0].Budgets, "BudgetItem 2")
-	if foundBudget2.Duration != time.Duration(30)*time.Minute {
-		t.Errorf("foundBudget2.Duration = %v, want %v", foundBudget2.Duration, time.Duration(30)*time.Minute)
-	}
+	foundBudget1 := findBudgetByName(stats.PerDay[0].StatsPerPlanItem, "BudgetItem 1")
+	assert.Equal(t, time.Duration(150)*time.Minute, foundBudget1.Duration)
+	foundBudget2 := findBudgetByName(stats.PerDay[0].StatsPerPlanItem, "BudgetItem 2")
+	assert.Equal(t, time.Duration(30)*time.Minute, foundBudget2.Duration)
 	// Check on Day 2
-	foundBudget2 = findBudgetByName(stats.Days[1].Budgets, "BudgetItem 2")
-	if foundBudget2.Duration != time.Duration(75)*time.Minute {
-		t.Errorf("foundBudget2.Duration = %v, want %v", foundBudget2.Duration, time.Duration(75)*time.Minute)
-	}
+	foundBudget2 = findBudgetByName(stats.PerDay[1].StatsPerPlanItem, "BudgetItem 2")
+	assert.Equal(t, time.Duration(75)*time.Minute, foundBudget2.Duration)
 
-	// Check by Budgets
-	b1 := findBudgetByName(stats.Budgets, "BudgetItem 1")
-	if b1.Duration != time.Duration(150)*time.Minute {
-		t.Errorf("b1.Duration = %v, want %v", b1.Duration, time.Duration(150)*time.Minute)
-	}
-	b2 := findBudgetByName(stats.Budgets, "BudgetItem 2")
-	if b2.Duration != time.Duration(105)*time.Minute {
-		t.Errorf("b2.Duration = %v, want %v", b2.Duration, time.Duration(105)*time.Minute)
-	}
-}
-
-func TestStatsServiceImpl_GetStats_WithBudgetOverrides(t *testing.T) {
-	teardown := setup(t)
-	defer teardown()
-
-	// given
-	startTime := time.Date(2023, time.January, 2, 0, 0, 0, 0, time.UTC)
-	endTime := time.Date(2023, time.January, 8, 0, 0, 0, 0, time.UTC)
-	budget1Id, _ := budgetRepoStub.StoreItem(ctx, 1, budget_plan.BudgetItem{
-		Name:           "BudgetItem 1",
-		WeeklyDuration: time.Duration(120) * time.Minute,
-	})
-	budget2Id, _ := budgetRepoStub.StoreItem(ctx, 1, budget_plan.BudgetItem{
-		Name:           "BudgetItem 2",
-		WeeklyDuration: time.Duration(30) * time.Minute,
-	})
-	budgetOverrideRepoStub.Store(ctx, 1, budget_override.BudgetOverride{ // 120 -> 100
-		BudgetID:   budget1Id,
-		StartDate:  startTime,
-		WeeklyTime: time.Duration(100) * time.Minute,
-	})
-	budgetOverrideRepoStub.Store(ctx, 1, budget_override.BudgetOverride{ // 30 -> 60
-		BudgetID:   budget2Id,
-		StartDate:  startTime,
-		WeeklyTime: time.Duration(60) * time.Minute,
-	})
-	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
-		Summary:   "BudgetItem 1",
-		StartTime: startTime,
-		EndTime:   startTime.Add(time.Hour),
-		Metadata:  calendar.EventMetadata{BudgetId: budget1Id},
-	})
-	calendarStub.AddEvent(ctx, calendar.Event{ // 30 minutes
-		Summary:   "BudgetItem 2",
-		StartTime: startTime.Add(time.Hour),
-		EndTime:   startTime.Add(time.Hour).Add(30 * time.Minute),
-		Metadata:  calendar.EventMetadata{BudgetId: budget2Id},
-	})
-
-	// when
-	stats, _ := statsService.GetStats(ctx, startTime, endTime)
-
-	// then
-	if stats.TotalPlanned != time.Duration(160)*time.Minute {
-		t.Errorf("stats.TotalPlanned = %v, want %v", stats.TotalPlanned, time.Duration(160)*time.Minute)
-	}
-	if stats.TotalRemaining != time.Duration(70)*time.Minute {
-		t.Errorf("stats.TotalRemaining = %v, want %v", stats.TotalRemaining, time.Duration(70)*time.Minute)
-	}
-	if stats.TotalTime != time.Duration(90)*time.Minute {
-		t.Errorf("stats.TotalTime = %v, want %v", stats.TotalRemaining, time.Duration(90)*time.Minute)
-	}
-
-	// Check budgets
-	budget1 := findBudgetByName(stats.Budgets, "BudgetItem 1")
-	if budget1.BudgetOverride.WeeklyTime != time.Duration(100)*time.Minute {
-		t.Errorf("budget1.BudgetOverride.WeeklyDuration = %v, want %v", budget1.BudgetOverride.WeeklyTime, time.Duration(100)*time.Minute)
-	}
-	budget2 := findBudgetByName(stats.Budgets, "BudgetItem 2")
-	if budget2.BudgetOverride.WeeklyTime != time.Duration(60)*time.Minute {
-		t.Errorf("budget2.BudgetOverride.WeeklyDuration = %v, want %v", budget2.BudgetOverride.WeeklyTime, time.Duration(60)*time.Minute)
-	}
-
-	// Check budgets remaining are from override
-	budget1 = findBudgetByName(stats.Budgets, "BudgetItem 1") // 100 - 60
-	if budget1.Remaining != time.Duration(40)*time.Minute {
-		t.Errorf("budget1.Remaining = %v, want %v", budget1.Remaining, time.Duration(40)*time.Minute)
-	}
-	budget2 = findBudgetByName(stats.Budgets, "BudgetItem 2") // 60 - 30
-	if budget2.Remaining != time.Duration(30)*time.Minute {
-		t.Errorf("budget2.Remaining = %v, want %v", budget2.Remaining, time.Duration(30)*time.Minute)
-	}
+	// Check by PerPlanItem
+	b1 := findBudgetByName(stats.PerPlanItem, "BudgetItem 1")
+	assert.Equal(t, time.Duration(150)*time.Minute, b1.Duration)
+	b2 := findBudgetByName(stats.PerPlanItem, "BudgetItem 2")
+	assert.Equal(t, time.Duration(105)*time.Minute, b2.Duration)
 }
 
 func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
-	teardown := setup(t)
+	statsService, ctx, teardown := setup(t)
 	defer teardown()
 
 	// given
-	startTime := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Date(2023, time.January, 7, 0, 0, 0, 0, time.UTC)
-	budget1Id, _ := budgetRepoStub.StoreItem(ctx, 1, budget_plan.BudgetItem{
-		Name:           "BudgetItem 1",
-		WeeklyDuration: time.Duration(120) * time.Minute,
-	})
+	startTime := time.Date(2023, time.January, 2, 0, 0, 0, 0, location)
+	planItem1 := weekly_plan.WeeklyPlanItem{Id: 101, BudgetItemId: 1, Name: "BudgetItem 1", WeeklyDuration: time.Duration(120) * time.Minute}
+	weeklyPlanService.setItems([]weekly_plan.WeeklyPlanItem{planItem1})
+
 	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
 		Summary:   "BudgetItem 1",
 		StartTime: startTime,
 		EndTime:   startTime.Add(time.Hour),
-		Metadata:  calendar.EventMetadata{BudgetId: budget1Id},
+		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
 	clock.SetNow(startTime.Add(90 * time.Minute))
-	eventService.StartNewEvent(ctx, event.Event{ // started 30 minutes ago
+	currentEventStub.set(&event.Event{ // started 30 minutes ago
 		Budget: budget_plan.BudgetItem{
-			Id:             budget1Id,
+			Id:             planItem1.BudgetItemId,
 			Name:           "BudgetItem 1",
 			WeeklyDuration: time.Duration(120) * time.Minute,
 		},
@@ -230,77 +149,60 @@ func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
 	})
 
 	// when
-	stats, _ := statsService.GetStats(ctx, startTime, endTime)
+	stats, _ := statsService.GetStats(ctx, startTime)
 
 	// then
 	// check on a budget list
-	budget1 := findBudgetByName(stats.Budgets, "BudgetItem 1")
-	if budget1.Duration != time.Duration(90)*time.Minute {
-		t.Errorf("budget1.Duration = %v, want %v", budget1.Duration, time.Duration(90)*time.Minute)
-	}
-	if budget1.Remaining != time.Duration(30)*time.Minute {
-		t.Errorf("budget1.Remaining = %v, want %v", budget1.Remaining, time.Duration(30)*time.Minute)
-	}
+	budget1 := findBudgetByName(stats.PerPlanItem, "BudgetItem 1")
+	assert.Equal(t, time.Duration(90)*time.Minute, budget1.Duration)
+	assert.Equal(t, time.Duration(30)*time.Minute, budget1.Remaining)
 	// check in day data
-	budget1 = findBudgetByName(stats.Days[0].Budgets, "BudgetItem 1")
-	if budget1.Duration != time.Duration(90)*time.Minute {
-		t.Errorf("budget1.Duration = %v, want %v", budget1.Duration, time.Duration(90)*time.Minute)
-	}
-	if stats.Days[0].TotalTime != time.Duration(90)*time.Minute {
-		t.Errorf("stats.Days[0].TotalTime = %v, want %v", stats.Days[0].TotalTime, time.Duration(90)*time.Minute)
-	}
+	budget1 = findBudgetByName(stats.PerDay[0].StatsPerPlanItem, "BudgetItem 1")
+	assert.Equal(t, time.Duration(90)*time.Minute, budget1.Duration)
+	assert.Equal(t, time.Duration(90)*time.Minute, stats.PerDay[0].TotalTime)
 	// check summary
-	if stats.TotalTime != time.Duration(90)*time.Minute {
-		t.Errorf("stats.TotalTime = %v, want %v", stats.TotalTime, time.Duration(90)*time.Minute)
-	}
-	if stats.TotalRemaining != time.Duration(30)*time.Minute {
-		t.Errorf("stats.TotalRemaining = %v, want %v", stats.TotalRemaining, time.Duration(30)*time.Minute)
-	}
-
+	assert.Equal(t, time.Duration(90)*time.Minute, stats.TotalTime)
+	assert.Equal(t, time.Duration(30)*time.Minute, stats.TotalRemaining)
 }
 
-func TestStatsServiceImpl_GetStats_WithNonActiveBudget(t *testing.T) {
-	teardown := setup(t)
-	defer teardown()
-
-	// given
-	startTime := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
-	endTime := time.Date(2023, time.January, 7, 0, 0, 0, 0, time.UTC)
-	budgetRepoStub.StoreItem(ctx, 1, budget_plan.BudgetItem{
-		Name:           "BudgetItem with end date in the past",
-		WeeklyDuration: time.Duration(30) * time.Minute,
-		// EndDate before the stats period
-		EndDate: time.Date(2022, time.December, 31, 0, 0, 0, 0, time.UTC),
-	})
-	budgetRepoStub.StoreItem(ctx, 1, budget_plan.BudgetItem{
-		Name:           "BudgetItem with start date in the future",
-		WeeklyDuration: time.Duration(40) * time.Minute,
-		// StartDate after the stats period
-		StartDate: time.Date(2023, time.January, 8, 0, 0, 0, 0, time.UTC),
-	})
-	budgetRepoStub.StoreItem(ctx, 1, budget_plan.BudgetItem{
-		Name:           "Active BudgetItem",
-		WeeklyDuration: time.Duration(50) * time.Minute,
-		StartDate:      startTime,
-	})
-	// when
-	stats, _ := statsService.GetStats(ctx, startTime, endTime)
-
-	// then
-	// check the summary
-	if stats.TotalPlanned != time.Duration(50)*time.Minute {
-		t.Errorf("stats.TotalTime = %v, want %v", stats.TotalPlanned, time.Duration(50)*time.Minute)
-	}
-	if stats.TotalRemaining != time.Duration(50)*time.Minute {
-		t.Errorf("stats.TotalRemaining = %v, want %v", stats.TotalRemaining, time.Duration(50)*time.Minute)
-	}
-}
-
-func findBudgetByName(budgets []BudgetStats, budgetName string) *BudgetStats {
+func findBudgetByName(budgets []PlanItemStats, budgetName string) *PlanItemStats {
 	for _, b := range budgets {
-		if b.Budget.Name == budgetName {
+		if b.PlanItem.Name == budgetName {
 			return &b
 		}
 	}
 	return nil
+}
+
+func Test_weekTimeRange(t *testing.T) {
+	type args struct {
+		date         time.Time
+		weekStartDay time.Weekday
+	}
+	tests := []struct {
+		name  string
+		args  args
+		want  time.Time
+		want1 time.Time
+	}{
+		{
+			name:  "should return full week range when start day is Monday",
+			args:  args{date: time.Date(2023, 10, 16, 0, 0, 0, 0, time.UTC), weekStartDay: time.Monday},
+			want:  time.Date(2023, 10, 16, 0, 0, 0, 0, time.UTC),
+			want1: time.Date(2023, 10, 22, 23, 59, 59, 999999999, time.UTC),
+		},
+		{
+			name:  "should return full week range when start day is Sunday",
+			args:  args{date: time.Date(2023, 10, 16, 0, 0, 0, 0, time.UTC), weekStartDay: time.Sunday},
+			want:  time.Date(2023, 10, 15, 0, 0, 0, 0, time.UTC),
+			want1: time.Date(2023, 10, 21, 23, 59, 59, 999999999, time.UTC),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, got1 := weekTimeRange(tt.args.date, tt.args.weekStartDay)
+			assert.Equalf(t, tt.want, got, "weekTimeRange(%v, %v)", tt.args.date, tt.args.weekStartDay)
+			assert.Equalf(t, tt.want1, got1, "weekTimeRange(%v, %v)", tt.args.date, tt.args.weekStartDay)
+		})
+	}
 }

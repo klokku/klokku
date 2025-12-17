@@ -36,7 +36,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/event", deps.EventHandler.GetLast5Events).Methods("GET").Queries("last", "5")
 
 	// Stats
-	r.HandleFunc("/api/stats", deps.StatsHandler.GetStats).Queries("fromDate", "{fromDate}", "toDate", "{toDate}").Methods("GET")
+	r.HandleFunc("/api/stats/weekly", deps.StatsHandler.GetStats).Queries("date", "{date}").Methods("GET")
 
 	// User management
 	r.HandleFunc("/api/user/current", deps.UserHandler.CurrentUser).Methods("GET")

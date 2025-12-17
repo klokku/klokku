@@ -1,29 +1,28 @@
 package stats
 
 import (
-	"github.com/klokku/klokku/pkg/budget_override"
-	"github.com/klokku/klokku/pkg/budget_plan"
 	"time"
+
+	"github.com/klokku/klokku/pkg/weekly_plan"
 )
 
 type DailyStats struct {
-	Date      time.Time
-	Budgets   []BudgetStats
-	TotalTime time.Duration
+	Date             time.Time
+	StatsPerPlanItem []PlanItemStats
+	TotalTime        time.Duration
 }
 
-type BudgetStats struct {
-	Budget         budget_plan.BudgetItem
-	BudgetOverride *budget_override.BudgetOverride
-	Duration       time.Duration
-	Remaining      time.Duration
+type PlanItemStats struct {
+	PlanItem  weekly_plan.WeeklyPlanItem
+	Duration  time.Duration
+	Remaining time.Duration
 }
 
 type StatsSummary struct {
 	StartDate      time.Time
 	EndDate        time.Time
-	Days           []DailyStats
-	Budgets        []BudgetStats
+	PerDay         []DailyStats
+	PerPlanItem    []PlanItemStats
 	TotalPlanned   time.Duration
 	TotalTime      time.Duration
 	TotalRemaining time.Duration

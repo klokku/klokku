@@ -46,10 +46,8 @@ type Dependencies struct {
 	EventService event.EventService
 	EventHandler *event.EventHandler
 
-	EventStatsService event.EventStatsService
-	StatsService      *stats.StatsServiceImpl
-	CsvStatsRenderer  *stats.CsvStatsRendererImpl
-	StatsHandler      *stats.StatsHandler
+	StatsService stats.StatsService
+	StatsHandler *stats.StatsHandler
 
 	ClickUpAuth    *clickup.ClickUpAuth
 	ClickUpClient  clickup.Client
@@ -92,11 +90,8 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.EventHandler = event.NewEventHandler(deps.EventService)
 
 	deps.Clock = &utils.SystemClock{}
-	deps.EventStatsService = event.NewEventStatsServiceImpl(deps.CalendarProvider, deps.Clock)
-	// TODO what is needed for the stats service?
-	deps.StatsService = stats.NewStatsServiceImpl(deps.EventService, deps.EventStatsService, deps.BudgetRepo, deps.BudgetOverrideRepo)
-	deps.CsvStatsRenderer = stats.NewCsvStatsTransformer()
-	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService, deps.CsvStatsRenderer)
+	deps.StatsService = stats.NewService(deps.EventService, deps.WeeklyPlanService, deps.CalendarProvider)
+	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService)
 
 	deps.ClickUpAuth = clickup.NewClickUpAuth(db, deps.UserService, cfg)
 	deps.ClickUpClient = clickup.NewClient(deps.ClickUpAuth)
