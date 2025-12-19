@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/klokku/klokku/pkg/calendar"
+	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/weekly_plan"
 	log "github.com/sirupsen/logrus"
 	gcal "google.golang.org/api/calendar/v3"
 )
@@ -15,20 +17,22 @@ import (
 var ErrUnathenticated = fmt.Errorf("user is unauthenticated, authentication is required")
 
 type Calendar struct {
-	service    *gcal.Service
-	userId     int
-	calendarId string
+	service           *gcal.Service
+	planItemsProvider calendar.PlanItemsProviderFunc
+	userId            int
+	calendarId        string
 }
 
-func newGoogleCalendar(service *gcal.Service, userId int, calendarId string) *Calendar {
+func newGoogleCalendar(service *gcal.Service, userId int, calendarId string, planItemsProvider calendar.PlanItemsProviderFunc) *Calendar {
 	return &Calendar{
-		service:    service,
-		userId:     userId,
-		calendarId: calendarId,
+		service:           service,
+		planItemsProvider: planItemsProvider,
+		userId:            userId,
+		calendarId:        calendarId,
 	}
 }
 
-func (c *Calendar) AddEvent(_ context.Context, event calendar.Event) (*calendar.Event, error) {
+func (c *Calendar) AddEvent(ctx context.Context, event calendar.Event) ([]calendar.Event, error) {
 	log.Debugf("Adding event: %+v, to calendar: %s", event, c.calendarId)
 	metadata, err := json.Marshal(event.Metadata)
 	if err != nil {
@@ -36,26 +40,44 @@ func (c *Calendar) AddEvent(_ context.Context, event calendar.Event) (*calendar.
 		log.Error(err)
 		return nil, err
 	}
-	result, err := c.service.Events.Insert(c.calendarId, &gcal.Event{
-		Summary:     event.Summary,
-		Description: string(metadata),
-		Start: &gcal.EventDateTime{
-			DateTime: event.StartTime.Format(time.RFC3339),
-		},
-		End: &gcal.EventDateTime{
-			DateTime: event.EndTime.Format(time.RFC3339),
-		},
-	}).Do()
 
+	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
-		err := fmt.Errorf("unable to insert event in Google Calendar: %v", err)
-		log.Error(err)
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+	events, err := splitEventIfNeeded(&event, currentUser.Settings.Timezone)
+	if err != nil {
 		return nil, err
 	}
+	var storedEvents []calendar.Event
+	for _, e := range events {
+		planItemName, err := c.getEventName(err, ctx, e.StartTime, e.Metadata.BudgetItemId)
+		if err != nil {
+			return nil, err
+		}
+		e.Summary = planItemName
 
-	event.UID = result.Id
+		result, err := c.service.Events.Insert(c.calendarId, &gcal.Event{
+			Summary:     e.Summary,
+			Description: string(metadata),
+			Start: &gcal.EventDateTime{
+				DateTime: e.StartTime.Format(time.RFC3339),
+			},
+			End: &gcal.EventDateTime{
+				DateTime: e.EndTime.Format(time.RFC3339),
+			},
+		}).Do()
 
-	return &event, nil
+		if err != nil {
+			err := fmt.Errorf("unable to insert event in Google Calendar: %v", err)
+			log.Error(err)
+			return nil, err
+		}
+
+		e.UID = result.Id
+		storedEvents = append(storedEvents, e)
+	}
+	return storedEvents, nil
 }
 
 func (c *Calendar) GetEvents(_ context.Context, from time.Time, to time.Time) ([]calendar.Event, error) {
@@ -108,7 +130,7 @@ func (c *Calendar) googleEventsToEvents(googleEvents []*gcal.Event) ([]calendar.
 	return events, nil
 }
 
-func (c *Calendar) ModifyEvent(_ context.Context, event calendar.Event) (*calendar.Event, error) {
+func (c *Calendar) ModifyEvent(ctx context.Context, event calendar.Event) ([]calendar.Event, error) {
 	metadata, err := json.Marshal(event.Metadata)
 	if err != nil {
 		err := fmt.Errorf("unable to marshal event metadata: %v", err)
@@ -116,29 +138,70 @@ func (c *Calendar) ModifyEvent(_ context.Context, event calendar.Event) (*calend
 		return nil, err
 	}
 
+	var updatedEvents []calendar.Event
+	currentUser, err := user.CurrentUser(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+	events, err := splitEventIfNeeded(&event, currentUser.Settings.Timezone)
+	if err != nil {
+		return nil, err
+	}
+	eventToUpdate := events[0]
+	eventsToAdd := events[1:]
+
+	planItemName, err := c.getEventName(err, ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
+	if err != nil {
+		return nil, err
+	}
+	eventToUpdate.Summary = planItemName
+
 	updatedGoogleEvent, err := c.service.Events.Update(c.calendarId, event.UID, &gcal.Event{
-		Summary:     event.Summary,
+		Summary:     eventToUpdate.Summary,
 		Description: string(metadata),
 		Start: &gcal.EventDateTime{
-			DateTime: event.StartTime.Format(time.RFC3339),
+			DateTime: eventToUpdate.StartTime.Format(time.RFC3339),
 		},
 		End: &gcal.EventDateTime{
-			DateTime: event.EndTime.Format(time.RFC3339),
+			DateTime: eventToUpdate.EndTime.Format(time.RFC3339),
 		},
 	}).Do()
-
 	if err != nil {
 		err := fmt.Errorf("unable to update event in Google Calendar: %v", err)
 		log.Error(err)
 		return nil, err
 	}
+	eventToUpdate.UID = updatedGoogleEvent.Id
+	updatedEvents = append(updatedEvents, eventToUpdate)
+	for _, e := range eventsToAdd {
+		planItemName, err := c.getEventName(err, ctx, e.StartTime, e.Metadata.BudgetItemId)
+		if err != nil {
+			return nil, err
+		}
+		e.Summary = planItemName
 
-	events, err := c.googleEventsToEvents([]*gcal.Event{updatedGoogleEvent})
-	if err != nil {
-		return nil, err
+		result, err := c.service.Events.Insert(c.calendarId, &gcal.Event{
+			Summary:     e.Summary,
+			Description: string(metadata),
+			Start: &gcal.EventDateTime{
+				DateTime: e.StartTime.Format(time.RFC3339),
+			},
+			End: &gcal.EventDateTime{
+				DateTime: e.EndTime.Format(time.RFC3339),
+			},
+		}).Do()
+
+		if err != nil {
+			err := fmt.Errorf("unable to insert event in Google Calendar: %v", err)
+			log.Error(err)
+			return nil, err
+		}
+
+		e.UID = result.Id
+		updatedEvents = append(updatedEvents, e)
 	}
 
-	return &events[0], nil
+	return updatedEvents, nil
 }
 
 func (c *Calendar) GetLastEvents(ctx context.Context, limit int) ([]calendar.Event, error) {
@@ -153,4 +216,86 @@ func (c *Calendar) GetLastEvents(ctx context.Context, limit int) ([]calendar.Eve
 		events = events[:limit]
 	}
 	return events, nil
+}
+
+func splitEventIfNeeded(event *calendar.Event, userTimezone string) ([]calendar.Event, error) {
+	location, err := time.LoadLocation(userTimezone)
+	if err != nil {
+		err := fmt.Errorf("could not load location for timezone %s", userTimezone)
+		log.Error(err)
+		return nil, err
+	}
+	if crossesDateBoundary(event.StartTime, event.EndTime, location) {
+		log.Debug("Event crosses date boundary, splitting it into two events")
+		eventA := calendar.Event{
+			UID:       event.UID,
+			Summary:   event.Summary,
+			StartTime: event.StartTime,
+			EndTime:   endOfDay(event.StartTime, location),
+			Metadata:  event.Metadata,
+		}
+		eventB := calendar.Event{
+			Summary:   event.Summary,
+			StartTime: startOfNextDay(event.StartTime, location),
+			EndTime:   event.EndTime,
+			Metadata:  event.Metadata,
+		}
+		resultEvents := []calendar.Event{eventA}
+		splitEventB, err := splitEventIfNeeded(&eventB, userTimezone)
+		if err != nil {
+			return nil, err
+		}
+		return append(resultEvents, splitEventB...), nil
+	}
+
+	return []calendar.Event{
+		{
+			UID:       event.UID,
+			Summary:   event.Summary,
+			StartTime: event.StartTime,
+			EndTime:   event.EndTime,
+			Metadata:  event.Metadata,
+		},
+	}, nil
+}
+
+func crossesDateBoundary(start, end time.Time, location *time.Location) bool {
+	startDate := start.In(location).YearDay()
+	endDate := end.In(location).YearDay()
+
+	return startDate != endDate
+}
+
+func endOfDay(t time.Time, location *time.Location) time.Time {
+	day := t.In(location)
+	return time.Date(day.Year(), day.Month(), day.Day(), 23, 59, 59, 999999999, location)
+}
+
+func startOfNextDay(t time.Time, location *time.Location) time.Time {
+	day := t.In(location)
+	return time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, location)
+}
+
+func (c *Calendar) getEventName(err error, ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
+	planItems, err := c.planItemsProvider(ctx, startTime)
+	if err != nil {
+		log.Errorf("failed to get plan items: %v", err)
+		return "", err
+	}
+	var planItemInfo *weekly_plan.WeeklyPlanItem
+	for _, planItem := range planItems {
+		if planItem.BudgetItemId == budgetItemId {
+			planItemInfo = &planItem
+			break
+		}
+	}
+	if planItemInfo == nil {
+		return "", fmt.Errorf("invalid budget item id")
+	}
+	return planItemInfo.Name, nil
+}
+
+func (c *Calendar) DeleteEvent(ctx context.Context, eventUid string) error {
+	//TODO implement me
+	panic("implement me")
 }
