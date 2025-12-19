@@ -28,12 +28,9 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/weeklyplan/item/{itemId}", deps.WeeklyPlanHandler.ResetItem).Methods("DELETE")
 
 	// Events
-	r.HandleFunc("/api/event", deps.EventHandler.StartEvent).Methods("POST")
-	r.HandleFunc("/api/event/current/status", deps.EventHandler.FinishCurrentEvent).Methods("PATCH")
-	r.HandleFunc("/api/event/current/start", deps.EventHandler.ModifyCurrentEventStartTime).Methods("PATCH")
-	r.HandleFunc("/api/event/current", deps.EventHandler.DeleteCurrentEvent).Methods("DELETE")
-	r.HandleFunc("/api/event/current", deps.EventHandler.GetCurrentEvent).Methods("GET")
-	r.HandleFunc("/api/event", deps.EventHandler.GetLast5Events).Methods("GET").Queries("last", "5")
+	r.HandleFunc("/api/event", deps.CurrentEventHandler.StartEvent).Methods("POST")
+	r.HandleFunc("/api/event/current/start", deps.CurrentEventHandler.ModifyCurrentEventStartTime).Methods("PATCH")
+	r.HandleFunc("/api/event/current", deps.CurrentEventHandler.GetCurrentEvent).Methods("GET")
 
 	// Stats
 	r.HandleFunc("/api/stats/weekly", deps.StatsHandler.GetStats).Queries("date", "{date}").Methods("GET")
@@ -53,16 +50,11 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	// Klokku Calendar
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetEvents).Queries("from", "{from}", "to", "{to}").Methods("GET")
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.CreateEvent).Methods("POST")
+	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetLast5Events).Methods("GET").Queries("last", "5")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.UpdateEvent).Methods("PUT")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.DeleteEvent).Methods("DELETE")
 	r.HandleFunc("/api/calendar/import-from-google", deps.CalendarMigratorHandler.MigrateFromGoogleToKlokku).Queries("from", "{from}", "to", "{to}").Methods("POST")
 	r.HandleFunc("/api/calendar/export-to-google", deps.CalendarMigratorHandler.MigrateFromKlokkuToGoogle).Queries("from", "{from}", "to", "{to}").Methods("POST")
-
-	// Google integration
-	r.HandleFunc("/api/integrations/google/auth/login", deps.GoogleAuth.OAuthLogin).Methods("GET")
-	r.HandleFunc("/api/integrations/google/auth/logout", deps.GoogleAuth.OAuthLogout).Methods("DELETE")
-	r.HandleFunc("/api/integrations/google/auth/callback", deps.GoogleAuth.OAuthCallback).Methods("GET")
-	r.HandleFunc("/api/integrations/google/calendars", deps.GoogleHandler.ListCalendars).Methods("GET")
 
 	// ClickUp integration
 	r.HandleFunc("/api/integrations/clickup/auth/login", deps.ClickUpAuth.OAuthLogin).Methods("GET")

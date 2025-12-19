@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/klokku/klokku/pkg/event"
+	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/weekly_plan"
 )
 
@@ -42,7 +42,7 @@ func (s *weeklyPlanItemsReaderStub) reset() {
 }
 
 type currentEventProviderStub struct {
-	event *event.Event
+	event *current_event.CurrentEvent
 }
 
 func newCurrentEventProviderStub() *currentEventProviderStub {
@@ -51,11 +51,11 @@ func newCurrentEventProviderStub() *currentEventProviderStub {
 	}
 }
 
-func (s *currentEventProviderStub) FindCurrentEvent(ctx context.Context) (*event.Event, error) {
+func (s *currentEventProviderStub) FindCurrentEvent(ctx context.Context) (*current_event.CurrentEvent, error) {
 	return s.event, nil
 }
 
-func (s *currentEventProviderStub) set(event *event.Event) {
+func (s *currentEventProviderStub) set(event *current_event.CurrentEvent) {
 	s.event = event
 }
 

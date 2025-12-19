@@ -55,7 +55,7 @@ CREATE TABLE weekly_plan_item
     weekly_occurrences  INTEGER,
     icon                TEXT,
     color               TEXT,
-    notes               TEXT NOT NULL DEFAULT '',
+    notes               TEXT    NOT NULL DEFAULT '',
     position            INTEGER NOT NULL,
     user_id             INTEGER NOT NULL DEFAULT 1
 );
@@ -64,13 +64,13 @@ CREATE UNIQUE INDEX weekly_plan_item_budget_item_week_number_idx ON weekly_plan_
 
 CREATE TABLE calendar_event
 (
-    id                  SERIAL PRIMARY KEY,
-    uid                 TEXT        NOT NULL,
-    summary             TEXT        NOT NULL,
-    start_time          TIMESTAMPTZ NOT NULL,
-    end_time            TIMESTAMPTZ NOT NULL,
-    budget_item_id      INTEGER     NOT NULL,
-    user_id             INTEGER     NOT NULL
+    id             SERIAL PRIMARY KEY,
+    uid            TEXT        NOT NULL,
+    summary        TEXT        NOT NULL,
+    start_time     TIMESTAMPTZ NOT NULL,
+    end_time       TIMESTAMPTZ NOT NULL,
+    budget_item_id INTEGER     NOT NULL,
+    user_id        INTEGER     NOT NULL
 );
 CREATE INDEX calendar_user_id_event_start_end_idx ON calendar_event (user_id, start_time, end_time);
 
@@ -106,12 +106,14 @@ CREATE INDEX clickup_tag_mapping_budget_item_id_idx ON clickup_tag_mapping (budg
 
 CREATE TABLE current_event
 (
-    id             SERIAL PRIMARY KEY,
-    budget_item_id INTEGER NOT NULL REFERENCES budget_item (id),
-    start_time     BIGINT  NOT NULL,
-    user_id        INTEGER NOT NULL
+    id                            SERIAL PRIMARY KEY,
+    budget_item_id                INTEGER     NOT NULL REFERENCES budget_item (id),
+    budget_item_name              text,
+    plan_item_weekly_duration_sec INTEGER     NOT NULL,
+    start_time                    TIMESTAMPTZ NOT NULL,
+    user_id                       INTEGER     NOT NULL
 );
-CREATE INDEX current_event_user_id_idx ON current_event (user_id);
+CREATE UNIQUE INDEX current_event_user_id_idx ON current_event (user_id);
 
 CREATE TABLE google_calendar_auth
 (

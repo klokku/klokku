@@ -6,7 +6,7 @@ import (
 
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/calendar"
-	"github.com/klokku/klokku/pkg/event"
+	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/klokku/klokku/pkg/weekly_plan"
 	log "github.com/sirupsen/logrus"
@@ -24,7 +24,7 @@ type StatsServiceImpl struct {
 }
 
 type currentEventProvider interface {
-	FindCurrentEvent(ctx context.Context) (*event.Event, error)
+	FindCurrentEvent(ctx context.Context) (current_event.CurrentEvent, error)
 }
 
 type weeklyPlanItemsReader interface {
@@ -76,8 +76,8 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (St
 		if err != nil {
 			log.Warnf("Unable to find current event: %v. Stats will not include current event.", err)
 		}
-		if currentEvent != nil {
-			currentEventBudgetItemId = currentEvent.Budget.Id
+		if currentEvent.Id != 0 { // current event exists
+			currentEventBudgetItemId = currentEvent.PlanItem.BudgetItemId
 			currentEventTime = s.clock.Now().Sub(currentEvent.StartTime)
 		}
 	}

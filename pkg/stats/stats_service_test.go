@@ -7,9 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
-	"github.com/klokku/klokku/pkg/event"
+	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/klokku/klokku/pkg/weekly_plan"
 	"github.com/stretchr/testify/assert"
@@ -139,9 +138,9 @@ func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
 		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
 	clock.SetNow(startTime.Add(90 * time.Minute))
-	currentEventStub.set(&event.Event{ // started 30 minutes ago
-		Budget: budget_plan.BudgetItem{
-			Id:             planItem1.BudgetItemId,
+	currentEventStub.set(&current_event.CurrentEvent{ // started 30 minutes ago
+		PlanItem: current_event.PlanItem{
+			BudgetItemId:   planItem1.BudgetItemId,
 			Name:           "BudgetItem 1",
 			WeeklyDuration: time.Duration(120) * time.Minute,
 		},

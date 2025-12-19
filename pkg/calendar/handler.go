@@ -7,6 +7,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/rest"
+	log "github.com/sirupsen/logrus"
 )
 
 type Handler struct {
@@ -63,12 +64,7 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	var dtos = make([]EventDTO, 0, len(events))
 	for _, e := range events {
-		dto, err := eventToDTO(e)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		dtos = append(dtos, dto)
+		dtos = append(dtos, eventToDTO(e))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -85,13 +81,8 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	event, err := dtoToEvent(eventDTO)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 
-	addedEvents, err := h.calendar.AddStickyEvent(r.Context(), event)
+	addedEvents, err := h.calendar.AddStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -99,12 +90,7 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	var eventDTOs []EventDTO
 	for _, e := range addedEvents {
-		addedEventDTO, err := eventToDTO(e)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		eventDTOs = append(eventDTOs, addedEventDTO)
+		eventDTOs = append(eventDTOs, eventToDTO(e))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -121,25 +107,15 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	event, err := dtoToEvent(eventDTO)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 
-	modifiedEvents, err := h.calendar.ModifyStickyEvent(r.Context(), event)
+	modifiedEvents, err := h.calendar.ModifyStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	var eventDTOs []EventDTO
 	for _, e := range modifiedEvents {
-		modifiedEventDTO, err := eventToDTO(e)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		eventDTOs = append(eventDTOs, modifiedEventDTO)
+		eventDTOs = append(eventDTOs, eventToDTO(e))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -163,22 +139,45 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func eventToDTO(e Event) (EventDTO, error) {
+func eventToDTO(e Event) EventDTO {
 	return EventDTO{
 		UID:          e.UID,
 		Summary:      e.Summary,
 		StartTime:    e.StartTime,
 		EndTime:      e.EndTime,
 		BudgetItemId: e.Metadata.BudgetItemId,
-	}, nil
+	}
 }
 
-func dtoToEvent(e EventDTO) (Event, error) {
+func dtoToEvent(e EventDTO) Event {
 	return Event{
 		UID:       e.UID,
 		Summary:   e.Summary,
 		StartTime: e.StartTime,
 		EndTime:   e.EndTime,
 		Metadata:  EventMetadata{BudgetItemId: e.BudgetItemId},
-	}, nil
+	}
+}
+
+func (h *Handler) GetLast5Events(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	log.Trace("Getting last 5 events")
+
+	events, err := h.calendar.GetLastEvents(r.Context(), 5)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	eventsDTO := make([]EventDTO, 0, len(events))
+	for _, event := range events {
+		eventsDTO = append(eventsDTO, eventToDTO(event))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(eventsDTO); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Tracef("Events returned: %d", len(eventsDTO))
 }

@@ -9,8 +9,7 @@ import (
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/calendar_provider"
 	"github.com/klokku/klokku/pkg/clickup"
-	"github.com/klokku/klokku/pkg/event"
-	"github.com/klokku/klokku/pkg/google"
+	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/stats"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/klokku/klokku/pkg/weekly_plan"
@@ -22,10 +21,6 @@ type Dependencies struct {
 	UserHandler *user.Handler
 
 	EventBus *event_bus.EventBus
-
-	GoogleAuth    *google.GoogleAuth
-	GoogleService google.Service
-	GoogleHandler *google.Handler
 
 	BudgetRepo        budget_plan.Repository
 	BudgetService     budget_plan.Service
@@ -43,8 +38,9 @@ type Dependencies struct {
 	CalendarMigrator        *calendar_provider.EventsMigratorImpl
 	CalendarMigratorHandler *calendar_provider.MigratorHandler
 
-	EventService event.EventService
-	EventHandler *event.EventHandler
+	CurrentEventRepo    current_event.Repository
+	CurrentEventService current_event.Service
+	CurrentEventHandler *current_event.EventHandler
 
 	StatsService stats.StatsService
 	StatsHandler *stats.StatsHandler
@@ -67,10 +63,6 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.UserService = user.NewUserService(user.NewUserRepo(db))
 	deps.UserHandler = user.NewHandler(deps.UserService)
 
-	deps.GoogleAuth = google.NewGoogleAuth(db, deps.UserService, cfg)
-	deps.GoogleService = google.NewService(deps.GoogleAuth)
-	deps.GoogleHandler = google.NewHandler(deps.GoogleService)
-
 	deps.BudgetRepo = budget_plan.NewBudgetPlanRepo(db)
 	deps.BudgetService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)
 	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetService)
@@ -79,18 +71,19 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.WeeklyPlanHandler = weekly_plan.NewHandler(deps.WeeklyPlanService)
 
 	deps.KlokkuCalendarRepository = calendar.NewRepository(db)
-	deps.KlokkuCalendarService = calendar.NewService(deps.KlokkuCalendarRepository)
-	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService, deps.BudgetService.GetPlan)
+	deps.KlokkuCalendarService = calendar.NewService(deps.KlokkuCalendarRepository, deps.EventBus, deps.WeeklyPlanService.GetItemsForWeek)
+	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService)
 
-	deps.CalendarProvider = calendar_provider.NewCalendarProvider(deps.UserService, deps.GoogleService, deps.KlokkuCalendarService)
+	deps.CalendarProvider = calendar_provider.NewCalendarProvider(deps.UserService, deps.KlokkuCalendarService)
 	deps.CalendarMigrator = calendar_provider.NewEventsMigratorImpl(deps.CalendarProvider)
 	deps.CalendarMigratorHandler = calendar_provider.NewMigratorHandler(deps.CalendarMigrator)
 
-	deps.EventService = event.NewEventService(event.NewEventRepo(db), deps.CalendarProvider, deps.UserService)
-	deps.EventHandler = event.NewEventHandler(deps.EventService)
+	deps.CurrentEventRepo = current_event.NewEventRepo(db)
+	deps.CurrentEventService = current_event.NewEventService(deps.CurrentEventRepo, deps.CalendarProvider)
+	deps.CurrentEventHandler = current_event.NewEventHandler(deps.CurrentEventService)
 
 	deps.Clock = &utils.SystemClock{}
-	deps.StatsService = stats.NewService(deps.EventService, deps.WeeklyPlanService, deps.CalendarProvider)
+	deps.StatsService = stats.NewService(deps.CurrentEventService, deps.WeeklyPlanService, deps.CalendarProvider)
 	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService)
 
 	deps.ClickUpAuth = clickup.NewClickUpAuth(db, deps.UserService, cfg)
