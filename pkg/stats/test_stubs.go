@@ -51,8 +51,8 @@ func newCurrentEventProviderStub() *currentEventProviderStub {
 	}
 }
 
-func (s *currentEventProviderStub) FindCurrentEvent(ctx context.Context) (*current_event.CurrentEvent, error) {
-	return s.event, nil
+func (s *currentEventProviderStub) FindCurrentEvent(ctx context.Context) (current_event.CurrentEvent, error) {
+	return *s.event, nil
 }
 
 func (s *currentEventProviderStub) set(event *current_event.CurrentEvent) {

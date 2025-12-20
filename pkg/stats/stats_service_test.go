@@ -137,14 +137,15 @@ func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
 		EndTime:   startTime.Add(time.Hour),
 		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
-	clock.SetNow(startTime.Add(90 * time.Minute))
+	clock.SetNow(startTime.Add(90 * time.Minute))     // 01:30
 	currentEventStub.set(&current_event.CurrentEvent{ // started 30 minutes ago
+		Id: 7897,
 		PlanItem: current_event.PlanItem{
 			BudgetItemId:   planItem1.BudgetItemId,
 			Name:           "BudgetItem 1",
 			WeeklyDuration: time.Duration(120) * time.Minute,
 		},
-		StartTime: startTime.Add(time.Hour),
+		StartTime: startTime.Add(time.Hour), // 01:00
 	})
 
 	// when
