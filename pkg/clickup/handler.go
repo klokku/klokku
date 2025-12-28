@@ -37,7 +37,7 @@ type ConfigurationDTO struct {
 type BudgetMappingDTO struct {
 	ClickUpSpaceId int    `json:"clickUpSpaceId"`
 	ClickUpTagName string `json:"clickUpTagName"`
-	BudgetId       int    `json:"budgetId"`
+	BudgetItemId   int    `json:"budgetItemId"`
 	Position       int    `json:"position"`
 }
 
@@ -245,7 +245,7 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 		mappings = append(mappings, BudgetMapping{
 			ClickupSpaceId: mappingDTO.ClickUpSpaceId,
 			ClickupTagName: mappingDTO.ClickUpTagName,
-			BudgetItemId:   mappingDTO.BudgetId,
+			BudgetItemId:   mappingDTO.BudgetItemId,
 			Position:       mappingDTO.Position,
 		})
 	}
@@ -291,7 +291,7 @@ func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 		configurationDTO.Mappings = append(configurationDTO.Mappings, BudgetMappingDTO{
 			ClickUpSpaceId: mapping.ClickupSpaceId,
 			ClickUpTagName: mapping.ClickupTagName,
-			BudgetId:       mapping.BudgetItemId,
+			BudgetItemId:   mapping.BudgetItemId,
 			Position:       mapping.Position,
 		})
 	}
@@ -325,7 +325,7 @@ func (h *Handler) DisableIntegration(w http.ResponseWriter, r *http.Request) {
 // @Description Retrieve ClickUp tasks for a specific budget item
 // @Tags ClickUp
 // @Produce json
-// @Param budgetId query int true "Budget Item ID"
+// @Param budgetItemId query int true "Budget Item ID"
 // @Success 200 {array} TaskDTO
 // @Failure 400 {string} string "Bad Request"
 // @Failure 403 {string} string "User not found"
@@ -333,18 +333,18 @@ func (h *Handler) DisableIntegration(w http.ResponseWriter, r *http.Request) {
 // @Security XUserId
 func (h *Handler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	budgetIdString := r.URL.Query().Get("budgetId")
-	if budgetIdString == "" {
-		http.Error(w, "budgetId is required", http.StatusBadRequest)
+	budgetItemIdString := r.URL.Query().Get("budgetItemId")
+	if budgetItemIdString == "" {
+		http.Error(w, "budgetItemId is required", http.StatusBadRequest)
 		return
 	}
-	budgetId, err := strconv.Atoi(budgetIdString)
+	budgetItemId, err := strconv.Atoi(budgetItemIdString)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	tasks, err := h.service.GetTasksByBudgetId(r.Context(), budgetId)
+	tasks, err := h.service.GetTasksByBudgetItemId(r.Context(), budgetItemId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -490,9 +490,9 @@ func (bi RepositoryImpl) UpdateItem(ctx context.Context, userId int, item Budget
 	return updatedItem, nil
 }
 
-func (bi RepositoryImpl) DeleteItem(ctx context.Context, userId int, budgetId int) (bool, error) {
+func (bi RepositoryImpl) DeleteItem(ctx context.Context, userId int, itemId int) (bool, error) {
 	query := "DELETE FROM budget_item WHERE id = $1 and user_id = $2"
-	result, err := bi.db.Exec(ctx, query, budgetId, userId)
+	result, err := bi.db.Exec(ctx, query, itemId, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)

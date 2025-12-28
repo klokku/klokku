@@ -115,10 +115,10 @@ func (s *RepositoryStub) UpdateItem(ctx context.Context, userId int, item Budget
 	return BudgetItem{}, nil
 }
 
-func (s *RepositoryStub) DeleteItem(ctx context.Context, userId int, budgetId int) (bool, error) {
+func (s *RepositoryStub) DeleteItem(ctx context.Context, userId int, itemId int) (bool, error) {
 	for _, plan := range s.plans {
 		for i, item := range plan.Items {
-			if item.Id == budgetId {
+			if item.Id == itemId {
 				plan.Items = append(plan.Items[:i], plan.Items[i+1:]...)
 				s.plans[plan.Id] = plan
 				return true, nil

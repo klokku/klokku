@@ -3,6 +3,7 @@ package clickup
 import (
 	"context"
 	"fmt"
+
 	"github.com/klokku/klokku/pkg/user"
 )
 
@@ -10,7 +11,7 @@ type Service interface {
 	StoreConfiguration(ctx context.Context, config Configuration) error
 	GetConfiguration(ctx context.Context) (Configuration, error)
 	DisableIntegration(ctx context.Context) error
-	GetTasksByBudgetId(ctx context.Context, budgetId int) ([]Task, error)
+	GetTasksByBudgetItemId(ctx context.Context, budgetItemId int) ([]Task, error)
 }
 
 type ServiceImpl struct {
@@ -61,7 +62,7 @@ func (s *ServiceImpl) DisableIntegration(ctx context.Context) error {
 	return nil
 }
 
-func (s *ServiceImpl) GetTasksByBudgetId(ctx context.Context, budgetId int) ([]Task, error) {
+func (s *ServiceImpl) GetTasksByBudgetItemId(ctx context.Context, budgetItemId int) ([]Task, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
@@ -74,7 +75,7 @@ func (s *ServiceImpl) GetTasksByBudgetId(ctx context.Context, budgetId int) ([]T
 
 	var clickUpTagName string
 	for _, mapping := range configuration.Mappings {
-		if mapping.BudgetItemId == budgetId {
+		if mapping.BudgetItemId == budgetItemId {
 			clickUpTagName = mapping.ClickupTagName
 		}
 	}

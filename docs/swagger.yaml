@@ -43,7 +43,7 @@ definitions:
     type: object
   clickup.BudgetMappingDTO:
     properties:
-      budgetId:
+      budgetItemId:
         type: integer
       clickUpSpaceId:
         type: integer
@@ -1012,7 +1012,7 @@ paths:
       parameters:
       - description: Budget Item ID
         in: query
-        name: budgetId
+        name: budgetItemId
         required: true
         type: integer
       produces:

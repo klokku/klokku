@@ -1256,7 +1256,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "Budget Item ID",
-                        "name": "budgetId",
+                        "name": "budgetItemId",
                         "in": "query",
                         "required": true
                     }
@@ -2029,7 +2029,7 @@ const docTemplate = `{
         "clickup.BudgetMappingDTO": {
             "type": "object",
             "properties": {
-                "budgetId": {
+                "budgetItemId": {
                     "type": "integer"
                 },
                 "clickUpSpaceId": {

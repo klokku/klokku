@@ -160,14 +160,14 @@ func duration(event calendar.Event) time.Duration {
 
 func prepareStatsByBudget(
 	planItems []weekly_plan.WeeklyPlanItem,
-	durationByBudgetId map[int]time.Duration,
+	durationByBudgetItemId map[int]time.Duration,
 	currentEventBudgetItemId int,
 	currentEventTime time.Duration,
 ) []PlanItemStats {
 
 	statsByBudget := make([]PlanItemStats, 0, len(planItems))
 	for _, item := range planItems {
-		budgetDuration := durationByBudgetId[item.BudgetItemId]
+		budgetDuration := durationByBudgetItemId[item.BudgetItemId]
 		budgetCurrentEventTime := time.Duration(0)
 		if item.BudgetItemId == currentEventBudgetItemId {
 			budgetCurrentEventTime = currentEventTime

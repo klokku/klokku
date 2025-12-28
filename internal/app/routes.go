@@ -71,5 +71,5 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/integrations/clickup/folder", deps.ClickUpHandler.ListFolders).Queries("spaceId", "{spaceId}").Methods("GET")
 	r.HandleFunc("/api/integrations/clickup/configuration", deps.ClickUpHandler.GetConfiguration).Methods("GET")
 	r.HandleFunc("/api/integrations/clickup/configuration", deps.ClickUpHandler.StoreConfiguration).Methods("PUT")
-	r.HandleFunc("/api/integrations/clickup/tasks", deps.ClickUpHandler.GetTasks).Queries("budgetId", "{budgetId}").Methods("GET")
+	r.HandleFunc("/api/integrations/clickup/tasks", deps.ClickUpHandler.GetTasks).Queries("budgetItemId", "{budgetItemId}").Methods("GET")
 }
