@@ -14,7 +14,7 @@ import (
 type BudgetPlanDTO struct {
 	Id        int       `json:"id"`
 	Name      string    `json:"name"`
-	IsCurrent bool      `json:"iscurrent"`
+	IsCurrent bool      `json:"isCurrent"`
 	Items     []ItemDTO `json:"items,omitempty"`
 }
 

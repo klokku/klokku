@@ -1969,7 +1969,7 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "iscurrent": {
+                "isCurrent": {
                     "type": "boolean"
                 },
                 "items": {
