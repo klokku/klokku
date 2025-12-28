@@ -33,6 +33,17 @@ func NewHandler(service Service) *Handler {
 	}
 }
 
+// GetItems godoc
+// @Summary Get weekly plan items
+// @Description Retrieve all items for a specific week
+// @Tags WeeklyPlan
+// @Produce json
+// @Param date query string true "Date in RFC3339 format (can be any day of the week)"
+// @Success 200 {array} WeeklyPlanItemDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid date format"
+// @Failure 403 {string} string "User not found"
+// @Router /api/weeklyplan [get]
+// @Security XUserId
 func (h *Handler) GetItems(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -66,6 +77,20 @@ func (h *Handler) GetItems(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateItem godoc
+// @Summary Update a weekly plan item
+// @Description Update the duration and notes for a weekly plan item
+// @Tags WeeklyPlan
+// @Accept json
+// @Produce json
+// @Param date query string true "Date in RFC3339 format (can be any day of the week)"
+// @Param item body object{id=int,budgetItemId=int,weeklyDuration=int,notes=string} true "Item update details"
+// @Success 200 {object} WeeklyPlanItemDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Item Not Found"
+// @Router /api/weeklyplan/item [put]
+// @Security XUserId
 func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -131,6 +156,17 @@ func (h *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ResetItem godoc
+// @Summary Reset a weekly plan item
+// @Description Reset a weekly plan item to its original budget plan values
+// @Tags WeeklyPlan
+// @Produce json
+// @Param itemId path int true "Weekly Plan Item ID"
+// @Success 200 {object} WeeklyPlanItemDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid itemId"
+// @Failure 403 {string} string "User not found"
+// @Router /api/weeklyplan/item/{itemId} [delete]
+// @Security XUserId
 func (h *Handler) ResetItem(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
@@ -159,6 +195,17 @@ func (h *Handler) ResetItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ResetWeek godoc
+// @Summary Reset entire week
+// @Description Reset all weekly plan items to budget plan values for a specific week
+// @Tags WeeklyPlan
+// @Produce json
+// @Param date query string true "Date in RFC3339 format (can be any day of the week)"
+// @Success 200 {array} WeeklyPlanItemDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid date format"
+// @Failure 403 {string} string "User not found"
+// @Router /api/weeklyplan [delete]
+// @Security XUserId
 func (h *Handler) ResetWeek(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// Can be any day of the given week

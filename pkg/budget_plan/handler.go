@@ -35,6 +35,15 @@ func NewBudgetPlanHandler(service Service) *Handler {
 	return &Handler{service}
 }
 
+// ListPlans godoc
+// @Summary List all budget plans
+// @Description Get a list of all budget plans for the current user
+// @Tags BudgetPlan
+// @Produce json
+// @Success 200 {array} BudgetPlanDTO
+// @Failure 403 {string} string "User not found"
+// @Router /api/budgetplan [get]
+// @Security XUserId
 func (handler *Handler) ListPlans(w http.ResponseWriter, r *http.Request) {
 	log.Debug("Listing budget plans")
 	w.Header().Set("Content-Type", "application/json")
@@ -55,6 +64,18 @@ func (handler *Handler) ListPlans(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CreatePlan godoc
+// @Summary Create a new budget plan
+// @Description Create a new budget plan with the provided details
+// @Tags BudgetPlan
+// @Accept json
+// @Produce json
+// @Param plan body BudgetPlanDTO true "Budget Plan"
+// @Success 201 {object} BudgetPlanDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/budgetplan [post]
+// @Security XUserId
 func (handler *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	log.Debug("Creating new budget plan")
 	w.Header().Set("Content-Type", "application/json")
@@ -78,6 +99,20 @@ func (handler *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdatePlan godoc
+// @Summary Update an existing budget plan
+// @Description Update a budget plan by ID
+// @Tags BudgetPlan
+// @Accept json
+// @Produce json
+// @Param planId path int true "Budget Plan ID"
+// @Param plan body BudgetPlanDTO true "Budget Plan"
+// @Success 200 {object} BudgetPlanDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Plan Not Found"
+// @Router /api/budgetplan/{planId} [put]
+// @Security XUserId
 func (handler *Handler) UpdatePlan(w http.ResponseWriter, r *http.Request) {
 	log.Debug("Updating budget plan")
 	w.Header().Set("Content-Type", "application/json")
@@ -115,6 +150,17 @@ func (handler *Handler) UpdatePlan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeletePlan godoc
+// @Summary Delete a budget plan
+// @Description Delete a budget plan by ID
+// @Tags BudgetPlan
+// @Param planId path int true "Budget Plan ID"
+// @Success 204 "No Content"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Plan Not Found"
+// @Router /api/budgetplan/{planId} [delete]
+// @Security XUserId
 func (handler *Handler) DeletePlan(w http.ResponseWriter, r *http.Request) {
 	log.Debug("Deleting budget plan")
 	w.Header().Set("Content-Type", "application/json")
@@ -137,6 +183,19 @@ func (handler *Handler) DeletePlan(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RegisterItem godoc
+// @Summary Add a new budget item to a plan
+// @Description Register a new budget item within a specific budget plan
+// @Tags BudgetItem
+// @Accept json
+// @Produce json
+// @Param planId path int true "Budget Plan ID"
+// @Param item body ItemDTO true "Budget Item"
+// @Success 201 {object} ItemDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/budgetplan/{planId}/item [post]
+// @Security XUserId
 func (handler *Handler) RegisterItem(w http.ResponseWriter, r *http.Request) {
 	log.Debug("Registering new budget item")
 	w.Header().Set("Content-Type", "application/json")
@@ -170,6 +229,18 @@ func (handler *Handler) RegisterItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetPlan godoc
+// @Summary Get a budget plan by ID
+// @Description Retrieve a specific budget plan with all its items
+// @Tags BudgetPlan
+// @Produce json
+// @Param planId path int true "Budget Plan ID"
+// @Success 200 {object} BudgetPlanDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Plan Not Found"
+// @Router /api/budgetplan/{planId} [get]
+// @Security XUserId
 func (handler *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -199,6 +270,20 @@ func (handler *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateItem godoc
+// @Summary Update a budget item
+// @Description Update an existing budget item within a plan
+// @Tags BudgetItem
+// @Accept json
+// @Produce json
+// @Param planId path int true "Budget Plan ID"
+// @Param itemId path int true "Budget Item ID"
+// @Param item body ItemDTO true "Budget Item"
+// @Success 200 {object} ItemDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/budgetplan/{planId}/item/{itemId} [put]
+// @Security XUserId
 func (handler *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
@@ -239,6 +324,18 @@ func (handler *Handler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteItem godoc
+// @Summary Delete a budget item
+// @Description Remove a budget item from a plan
+// @Tags BudgetItem
+// @Param planId path int true "Budget Plan ID"
+// @Param itemId path int true "Budget Item ID"
+// @Success 204 "No Content"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Item Not Found"
+// @Router /api/budgetplan/{planId}/item/{itemId} [delete]
+// @Security XUserId
 func (handler *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
@@ -263,6 +360,20 @@ func (handler *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// SetItemPosition godoc
+// @Summary Set position of a budget item
+// @Description Move a budget item to a specific position in the list
+// @Tags BudgetItem
+// @Accept json
+// @Param planId path int true "Budget Plan ID"
+// @Param itemId path int true "Budget Item ID"
+// @Param position body object{id=int,precedingId=int} true "Position details"
+// @Success 200 "OK"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Item Not Found"
+// @Router /api/budgetplan/{planId}/item/{itemId}/position [put]
+// @Security XUserId
 func (handler *Handler) SetItemPosition(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	planIdString := vars["planId"]

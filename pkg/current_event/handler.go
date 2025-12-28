@@ -33,6 +33,17 @@ func NewEventHandler(eventService Service) *EventHandler {
 	return &EventHandler{eventService}
 }
 
+// StartEvent godoc
+// @Summary Start a new event
+// @Description Start a new event with the given budget item id
+// @Tags CurrentEvent
+// @Accept json
+// @Produce json
+// @Param budgetItemId path int true "Budget item id"
+// @Success 201 {object} CurrentEventDTO
+// @Failure 403 {string} string "User not found"
+// @Router /api/event [post]
+// @Security XUserId
 func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Starting new current event")
@@ -79,6 +90,16 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetCurrentEvent godoc
+// @Summary Get the current running event
+// @Description Retrieve the currently active event
+// @Tags CurrentEvent
+// @Produce json
+// @Success 200 {object} CurrentEventDTO
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "No current event"
+// @Router /api/event/current [get]
+// @Security XUserId
 func (e *EventHandler) GetCurrentEvent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -98,6 +119,19 @@ func (e *EventHandler) GetCurrentEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ModifyCurrentEventStartTime godoc
+// @Summary Modify current event start time
+// @Description Update the start time of the currently running event
+// @Tags CurrentEvent
+// @Accept json
+// @Produce json
+// @Param startTime body object{startTime=string} true "Start time in RFC3339 format"
+// @Success 200 {object} CurrentEventDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "No current event"
+// @Router /api/event/current/start [patch]
+// @Security XUserId
 func (e *EventHandler) ModifyCurrentEventStartTime(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Modifying current event start time")

@@ -20,6 +20,15 @@ func init() {
 	}
 }
 
+// @title Klokku API
+// @version 0.9
+// @description Time planning and tracking API
+// @host localhost:8181
+// @BasePath /
+// @securityDefinitions.apikey XUserId
+// @in header
+// @name X-User-Id
+// @description User ID header required for authentication
 func main() {
 	application, err := app.NewApplication()
 	if err != nil {

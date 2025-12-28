@@ -3,10 +3,16 @@ package app
 import (
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/config"
+	httpSwagger "github.com/swaggo/http-swagger"
+
+	_ "github.com/klokku/klokku/docs" // Import generated docs
 )
 
 // RegisterRoutes registers all API endpoints.
 func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
+
+	// Swagger UI
+	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	// Budget Plan
 	r.HandleFunc("/api/budgetplan", deps.BudgetPlanHandler.ListPlans).Methods("GET")
@@ -50,7 +56,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	// Klokku Calendar
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetEvents).Queries("from", "{from}", "to", "{to}").Methods("GET")
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.CreateEvent).Methods("POST")
-	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetLast5Events).Methods("GET").Queries("last", "5")
+	r.HandleFunc("/api/calendar/event/recent", deps.KlokkuCalendarHandler.GetLastEvents).Methods("GET").Queries("last", "{last}")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.UpdateEvent).Methods("PUT")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.DeleteEvent).Methods("DELETE")
 

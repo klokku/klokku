@@ -56,6 +56,15 @@ func NewHandler(s Service, c Client) *Handler {
 	return &Handler{s, c}
 }
 
+// ListWorkspaces godoc
+// @Summary List ClickUp workspaces
+// @Description Get all ClickUp workspaces the user has access to
+// @Tags ClickUp
+// @Produce json
+// @Success 200 {array} WorkspaceDTO
+// @Failure 403 {string} string "Unauthorized"
+// @Router /api/integrations/clickup/workspace [get]
+// @Security XUserId
 func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	workspaces, err := h.client.GetAuthorizedWorkspaces(r.Context())
@@ -81,6 +90,17 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListSpaces godoc
+// @Summary List ClickUp spaces
+// @Description Get all spaces in a ClickUp workspace
+// @Tags ClickUp
+// @Produce json
+// @Param workspaceId query int true "Workspace ID"
+// @Success 200 {array} SpaceDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/space [get]
+// @Security XUserId
 func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	workspaceIdString := r.URL.Query().Get("workspaceId")
@@ -113,6 +133,17 @@ func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListTags godoc
+// @Summary List ClickUp tags
+// @Description Get all tags in a ClickUp space
+// @Tags ClickUp
+// @Produce json
+// @Param spaceId query int true "Space ID"
+// @Success 200 {array} TagDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/tag [get]
+// @Security XUserId
 func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	spaceIdString := r.URL.Query().Get("spaceId")
@@ -152,6 +183,17 @@ func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListFolders godoc
+// @Summary List ClickUp folders
+// @Description Get all folders in a ClickUp space
+// @Tags ClickUp
+// @Produce json
+// @Param spaceId query int true "Space ID"
+// @Success 200 {array} FolderDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/folder [get]
+// @Security XUserId
 func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	spaceIdString := r.URL.Query().Get("spaceId")
@@ -180,6 +222,17 @@ func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// StoreConfiguration godoc
+// @Summary Store ClickUp configuration
+// @Description Save ClickUp integration configuration and budget mappings
+// @Tags ClickUp
+// @Accept json
+// @Param configuration body ConfigurationDTO true "ClickUp Configuration"
+// @Success 200 "OK"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/configuration [put]
+// @Security XUserId
 func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var configurationDTO ConfigurationDTO
@@ -212,6 +265,15 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// GetConfiguration godoc
+// @Summary Get ClickUp configuration
+// @Description Retrieve the current ClickUp integration configuration
+// @Tags ClickUp
+// @Produce json
+// @Success 200 {object} ConfigurationDTO
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/configuration [get]
+// @Security XUserId
 func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	configuration, err := h.service.GetConfiguration(r.Context())
@@ -240,6 +302,14 @@ func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DisableIntegration godoc
+// @Summary Disable ClickUp integration
+// @Description Disconnect and disable the ClickUp integration
+// @Tags ClickUp
+// @Success 200 "OK"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/auth [delete]
+// @Security XUserId
 func (h *Handler) DisableIntegration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	err := h.service.DisableIntegration(r.Context())
@@ -250,6 +320,17 @@ func (h *Handler) DisableIntegration(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// GetTasks godoc
+// @Summary Get ClickUp tasks
+// @Description Retrieve ClickUp tasks for a specific budget item
+// @Tags ClickUp
+// @Produce json
+// @Param budgetId query int true "Budget Item ID"
+// @Success 200 {array} TaskDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/tasks [get]
+// @Security XUserId
 func (h *Handler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	budgetIdString := r.URL.Query().Get("budgetId")

@@ -84,6 +84,7 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 				event_calendar_google_calendar_id FROM "user" WHERE uid = $1`
 
 	var user User
+	var googleCalendarId sql.NullString
 	err := u.db.QueryRow(context.Background(), query, uid).
 		Scan(
 			&user.Id,
@@ -94,7 +95,7 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 			&user.Settings.Timezone,
 			&user.Settings.WeekFirstDay,
 			&user.Settings.EventCalendarType,
-			&user.Settings.GoogleCalendar.CalendarId,
+			&googleCalendarId,
 		)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Infof("user with uid %s not found: %v", uid, err)
@@ -102,6 +103,9 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 	} else if err != nil {
 		log.Errorf("failed to get user: %v", err)
 		return User{}, err
+	}
+	if googleCalendarId.Valid {
+		user.Settings.GoogleCalendar.CalendarId = googleCalendarId.String
 	}
 	return user, nil
 }

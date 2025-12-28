@@ -41,6 +41,17 @@ func NewHandler(userService Service) *Handler {
 	}
 }
 
+// CreateUser godoc
+// @Summary Create a new user
+// @Description Register a new user in the system
+// @Tags User
+// @Accept json
+// @Produce json
+// @Param user body UserDTO true "User"
+// @Success 201 {object} UserDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/user [post]
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Debug("Creating user")
@@ -104,6 +115,16 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CurrentUser godoc
+// @Summary Get current user
+// @Description Retrieve the currently authenticated user's information
+// @Tags User
+// @Produce json
+// @Success 200 {object} UserDTO
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "User Not Found"
+// @Router /api/user/current [get]
+// @Security XUserId
 func (h *Handler) CurrentUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Getting current user")
@@ -125,6 +146,18 @@ func (h *Handler) CurrentUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateUser godoc
+// @Summary Update current user
+// @Description Update the currently authenticated user's information
+// @Tags User
+// @Accept json
+// @Produce json
+// @Param user body UserDTO true "User"
+// @Success 200 {object} UserDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/user/current [put]
+// @Security XUserId
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Updating user")
@@ -176,6 +209,15 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// IsUsernameAvailable godoc
+// @Summary Check username availability
+// @Description Check if a username is available for registration
+// @Tags User
+// @Produce json
+// @Param username query string true "Username to check"
+// @Success 200 {object} object{available=bool}
+// @Failure 400 {object} rest.ErrorResponse "Username is required"
+// @Router /api/user/name-availability [get]
 func (h *Handler) IsUsernameAvailable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Checking if username is available")
@@ -204,6 +246,14 @@ func (h *Handler) IsUsernameAvailable(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetAvailableUsers godoc
+// @Summary Get all users
+// @Description Retrieve a list of all registered users
+// @Tags User
+// @Produce json
+// @Success 200 {array} UserDTO
+// @Failure 403 {string} string "User not found"
+// @Router /api/user [get]
 func (h *Handler) GetAvailableUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Getting available users")
@@ -225,6 +275,15 @@ func (h *Handler) GetAvailableUsers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteUser godoc
+// @Summary Delete a user
+// @Description Delete a user by UID
+// @Tags User
+// @Param userUid path string true "User UID"
+// @Success 204 "No Content"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/user/{userUid} [delete]
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Deleting user")
@@ -245,6 +304,17 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UploadPhoto godoc
+// @Summary Upload user photo
+// @Description Upload a profile photo for the current user (max 3MB)
+// @Tags User
+// @Accept multipart/form-data
+// @Param photo formData file true "User photo"
+// @Success 200 "OK"
+// @Failure 400 {object} rest.ErrorResponse "Image too large or invalid"
+// @Failure 403 {string} string "User not found"
+// @Router /api/user/current/photo [put]
+// @Security XUserId
 func (h *Handler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Uploading user photo")
@@ -291,6 +361,17 @@ func (h *Handler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// GetPhoto godoc
+// @Summary Get user photo
+// @Description Retrieve a user's profile photo. If userUid is provided, gets that user's photo, otherwise gets current user's photo
+// @Tags User
+// @Produce image/jpeg
+// @Param userUid path string false "User UID (optional)"
+// @Success 200 {file} image/jpeg
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/user/current/photo [get]
+// @Router /api/user/{userUid}/photo [get]
 func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/jpeg")
 	log.Trace("Getting user photo")
@@ -330,6 +411,14 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeletePhoto godoc
+// @Summary Delete user photo
+// @Description Remove the current user's profile photo
+// @Tags User
+// @Success 204 "No Content"
+// @Failure 403 {string} string "User not found"
+// @Router /api/user/current/photo [delete]
+// @Security XUserId
 func (h *Handler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	log.Trace("Deleting user photo")

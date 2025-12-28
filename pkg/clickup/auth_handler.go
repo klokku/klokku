@@ -47,6 +47,16 @@ func NewClickUpAuth(db *pgx.Conn, userService user.Service, cfg config.Applicati
 	return &ClickUpAuth{db: db, userService: userService, oauthConfig: oauthConfig}
 }
 
+// OAuthLogin godoc
+// @Summary Initiate ClickUp OAuth login
+// @Description Start the OAuth flow to connect ClickUp account
+// @Tags ClickUp
+// @Produce json
+// @Param finalUrl query string false "URL to redirect to after authentication"
+// @Success 200 {object} object{redirectUrl=string} "OAuth redirect URL"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/auth/login [get]
+// @Security XUserId
 func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -100,6 +110,14 @@ func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// OAuthCallback godoc
+// @Summary ClickUp OAuth callback
+// @Description Handle the OAuth callback from ClickUp
+// @Tags ClickUp
+// @Param code query string true "Authorization code"
+// @Param state query string true "State parameter"
+// @Success 302 "Redirect to finalUrl with success=true/false"
+// @Router /api/integrations/clickup/auth/callback [get]
 func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	code := r.FormValue("code")
@@ -136,6 +154,16 @@ func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, finalUrl+"?success=true", http.StatusFound)
 }
 
+// IsAuthenticated godoc
+// @Summary Check ClickUp authentication status
+// @Description Check if the current user has authenticated with ClickUp
+// @Tags ClickUp
+// @Produce json
+// @Success 200 {string} string "true"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 "Not authenticated"
+// @Router /api/integrations/clickup/auth [get]
+// @Security XUserId
 func (g *ClickUpAuth) IsAuthenticated(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userId, err := user.CurrentId(r.Context())

@@ -39,6 +39,17 @@ func NewStatsHandler(statsService StatsService) *StatsHandler {
 	return &StatsHandler{statsService}
 }
 
+// GetStats godoc
+// @Summary Get weekly statistics
+// @Description Retrieve statistics for a specific week including time spent per plan item
+// @Tags Stats
+// @Produce json
+// @Param date query string true "Date in RFC3339 format (can be any day of the week)"
+// @Success 200 {object} StatsSummaryDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid date format"
+// @Failure 403 {string} string "User not found"
+// @Router /api/stats/weekly [get]
+// @Security XUserId
 func (handler *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	weekDateString := r.URL.Query().Get("date")
 	weekDate, err := time.Parse(time.RFC3339, weekDateString)

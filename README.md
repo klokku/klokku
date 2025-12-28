@@ -36,3 +36,15 @@ The domain model and the API are still in development and may change.
 
 You can run a development version of Klokku to check out the features.\
 This version is fully usable, but I cannot guarantee the stability of the API, nor the automatic data migration if the underlying model changes.
+
+## API Documentation
+
+The API documentation is available via Swagger UI when the application is running:
+
+- **Swagger UI**: http://localhost:8181/swagger/index.html
+- **OpenAPI JSON**: http://localhost:8181/swagger/doc.json
+
+To regenerate the Swagger documentation after making changes to the API:
+```shell
+make swagger
+```
