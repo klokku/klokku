@@ -9,8 +9,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type BudgetPlanItemUpdated BudgetItem
-
 type Service interface {
 	GetPlan(ctx context.Context, planId int) (BudgetPlan, error)
 	GetCurrentPlan(ctx context.Context) (BudgetPlan, error)

@@ -192,7 +192,7 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 		mappings = append(mappings, BudgetMapping{
 			ClickupSpaceId: mappingDTO.ClickUpSpaceId,
 			ClickupTagName: mappingDTO.ClickUpTagName,
-			BudgetId:       mappingDTO.BudgetId,
+			BudgetItemId:   mappingDTO.BudgetId,
 			Position:       mappingDTO.Position,
 		})
 	}
@@ -229,7 +229,7 @@ func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 		configurationDTO.Mappings = append(configurationDTO.Mappings, BudgetMappingDTO{
 			ClickUpSpaceId: mapping.ClickupSpaceId,
 			ClickUpTagName: mapping.ClickupTagName,
-			BudgetId:       mapping.BudgetId,
+			BudgetId:       mapping.BudgetItemId,
 			Position:       mapping.Position,
 		})
 	}

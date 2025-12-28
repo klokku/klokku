@@ -259,10 +259,9 @@ func TestEventToDTO(t *testing.T) {
 	}
 
 	// Convert to DTO
-	dto, err := eventToDTO(event)
+	dto := eventToDTO(event)
 
 	// Verify conversion
-	assert.NoError(t, err)
 	assert.Equal(t, uid, dto.UID)
 	assert.Equal(t, "Test Event", dto.Summary)
 	assert.Equal(t, time.Date(2023, 1, 1, 10, 0, 0, 0, location), dto.StartTime)

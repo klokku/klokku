@@ -12,6 +12,6 @@ type BudgetMapping struct {
 	Id             int
 	ClickupSpaceId int
 	ClickupTagName string
-	BudgetId       int
+	BudgetItemId   int
 	Position       int
 }

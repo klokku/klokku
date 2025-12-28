@@ -355,11 +355,11 @@ func TestServiceImpl_UpdateItem(t *testing.T) {
 		item.Name = "Updated"
 		item.WeeklyDuration = time.Duration(4) * time.Hour
 
-		var publishedEvent event_bus.EventT[BudgetPlanItemUpdated]
-		event_bus.SubscribeTyped[BudgetPlanItemUpdated](
+		var publishedEvent event_bus.EventT[event_bus.BudgetPlanItemUpdated]
+		event_bus.SubscribeTyped[event_bus.BudgetPlanItemUpdated](
 			eventBus,
 			"budget_plan.item.updated",
-			func(e event_bus.EventT[BudgetPlanItemUpdated]) error {
+			func(e event_bus.EventT[event_bus.BudgetPlanItemUpdated]) error {
 				publishedEvent = e
 				return nil
 			},

@@ -74,7 +74,7 @@ func (s *ServiceImpl) GetTasksByBudgetId(ctx context.Context, budgetId int) ([]T
 
 	var clickUpTagName string
 	for _, mapping := range configuration.Mappings {
-		if mapping.BudgetId == budgetId {
+		if mapping.BudgetItemId == budgetId {
 			clickUpTagName = mapping.ClickupTagName
 		}
 	}

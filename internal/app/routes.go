@@ -53,8 +53,6 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetLast5Events).Methods("GET").Queries("last", "5")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.UpdateEvent).Methods("PUT")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.DeleteEvent).Methods("DELETE")
-	r.HandleFunc("/api/calendar/import-from-google", deps.CalendarMigratorHandler.MigrateFromGoogleToKlokku).Queries("from", "{from}", "to", "{to}").Methods("POST")
-	r.HandleFunc("/api/calendar/export-to-google", deps.CalendarMigratorHandler.MigrateFromKlokkuToGoogle).Queries("from", "{from}", "to", "{to}").Methods("POST")
 
 	// ClickUp integration
 	r.HandleFunc("/api/integrations/clickup/auth/login", deps.ClickUpAuth.OAuthLogin).Methods("GET")

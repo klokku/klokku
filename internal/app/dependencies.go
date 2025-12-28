@@ -34,9 +34,7 @@ type Dependencies struct {
 	KlokkuCalendarService    *calendar.Service
 	KlokkuCalendarHandler    *calendar.Handler
 
-	CalendarProvider        *calendar_provider.CalendarProvider
-	CalendarMigrator        *calendar_provider.EventsMigratorImpl
-	CalendarMigratorHandler *calendar_provider.MigratorHandler
+	CalendarProvider *calendar_provider.CalendarProvider
 
 	CurrentEventRepo    current_event.Repository
 	CurrentEventService current_event.Service
@@ -75,8 +73,6 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService)
 
 	deps.CalendarProvider = calendar_provider.NewCalendarProvider(deps.UserService, deps.KlokkuCalendarService)
-	deps.CalendarMigrator = calendar_provider.NewEventsMigratorImpl(deps.CalendarProvider)
-	deps.CalendarMigratorHandler = calendar_provider.NewMigratorHandler(deps.CalendarMigrator)
 
 	deps.CurrentEventRepo = current_event.NewEventRepo(db)
 	deps.CurrentEventService = current_event.NewEventService(deps.CurrentEventRepo, deps.CalendarProvider)
