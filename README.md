@@ -10,19 +10,29 @@ Klokku provides a tool to monitor time allocation, offering insights into how ti
 
 Read more on [klokku.com](https://klokku.com).
 
-## How to install Klokku
+## Running Klokku
 
-1. Open the console.
-2. Copy the following command:
+### Nightly/Development version
+
+The easiest way to run Klokku is using Docker Compose.
+
+1. Install Docker (newer versions have Docker Compose built-in).
+2. Clone this repository.
+3. Navigate to the cloned directory.
+4. Copy the `.env.template` file to `.env` and adjust the configuration as needed.
+5. Open the console.
+6. Run the following command in the directory where you have placed the files:
     ```shell
-    docker run -d --name klokku \
-       -p 8181:8181 \
-       -v storage:/app/storage \
-       -e KLOKKU_HOST="http://localhost:8181" \
-       ghcr.io/klokku/klokku:latest
+    docker compose up -d
     ```
-3. Optionally, adjust your environmental variables (-e):
-   - `KLOKKU_HOST`: the URL address of your Klokku application.
-4. Run the command. 
 
 You can now access Klokku at http://localhost:8181 🚀
+
+
+### Production version
+
+Klokku currently does not have a production version.\
+The domain model and the API are still in development and may change.
+
+You can run a development version of Klokku to check out the features.\
+This version is fully usable, but I cannot guarantee the stability of the API, nor the automatic data migration if the underlying model changes.
