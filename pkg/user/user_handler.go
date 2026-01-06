@@ -195,6 +195,7 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		if encodeErr != nil {
 			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
 		}
+		return
 	}
 
 	updatedUser, err := h.userService.UpdateUser(r.Context(), dtoToUser(user))
@@ -234,6 +235,7 @@ func (h *Handler) IsUsernameAvailable(w http.ResponseWriter, r *http.Request) {
 		if encodeErr != nil {
 			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
 		}
+		return
 	}
 
 	isAvailable, err := h.userService.IsUsernameAvailable(r.Context(), username)

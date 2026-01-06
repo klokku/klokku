@@ -475,6 +475,40 @@ func TestServiceImpl_MoveItemAfter(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to get current user")
 	})
+
+	t.Run("should return error when preceding item does not exist", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		plan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Test Plan"})
+		item1, _ := service.CreateItem(ctx, BudgetItem{PlanId: plan.Id, Name: "Item 1"})
+
+		// when - try to move item1 after a non-existent item (999)
+		moved, err := service.MoveItemAfter(ctx, plan.Id, item1.Id, 999)
+
+		// then
+		assert.Error(t, err)
+		assert.False(t, moved)
+		assert.Contains(t, err.Error(), "item not found")
+	})
+
+	t.Run("should return error when item to move does not exist", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		plan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Test Plan"})
+		item1, _ := service.CreateItem(ctx, BudgetItem{PlanId: plan.Id, Name: "Item 1"})
+
+		// when - try to move a non-existent item (999) after item1
+		moved, err := service.MoveItemAfter(ctx, plan.Id, 999, item1.Id)
+
+		// then
+		assert.Error(t, err)
+		assert.False(t, moved)
+		assert.Contains(t, err.Error(), "item not found")
+	})
 }
 
 func TestServiceImpl_GetItem(t *testing.T) {

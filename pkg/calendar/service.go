@@ -48,7 +48,7 @@ func (s *Service) AddEvent(ctx context.Context, event Event) ([]Event, error) {
 			return err
 		}
 		for _, e := range events {
-			planItemName, err := s.getEventName(err, ctx, e.StartTime, e.Metadata.BudgetItemId)
+			planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
 			if err != nil {
 				return err
 			}
@@ -214,7 +214,7 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 		eventToUpdate := events[0]
 		eventsToAdd := events[1:]
 
-		planItemName, err := s.getEventName(err, ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
+		planItemName, err := s.getEventName(ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
 		if err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 		}
 		updatedEvents = append(updatedEvents, updatedEvent)
 		for _, e := range eventsToAdd {
-			planItemName, err := s.getEventName(err, ctx, e.StartTime, e.Metadata.BudgetItemId)
+			planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
 			if err != nil {
 				return err
 			}
@@ -248,7 +248,7 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 	return updatedEvents, nil
 }
 
-func (s *Service) getEventName(err error, ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
+func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
 	planItems, err := s.planItemsProvider(ctx, startTime)
 	if err != nil {
 		log.Errorf("failed to get plan items: %v", err)

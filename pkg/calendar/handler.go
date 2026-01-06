@@ -218,8 +218,7 @@ func dtoToEvent(e EventDTO) Event {
 // @Security XUserId
 func (h *Handler) GetLastEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	vars := mux.Vars(r)
-	lastString := vars["last"]
+	lastString := r.URL.Query().Get("last")
 	last, err := strconv.Atoi(lastString)
 	if err != nil || last < 1 {
 		log.Warnf("Invalid last parameter: %s. Using default value 5", lastString)

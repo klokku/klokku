@@ -54,11 +54,11 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 }
 
 func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
-	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
+	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type,
 				event_calendar_google_calendar_id FROM users WHERE id = $1`
 	var user User
 	var googleCalendarId sql.NullString
-	err := u.db.QueryRow(context.Background(), query, id).
+	err := u.db.QueryRow(ctx, query, id).
 		Scan(
 			&user.Id,
 			&user.Uid,
@@ -89,7 +89,7 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 
 	var user User
 	var googleCalendarId sql.NullString
-	err := u.db.QueryRow(context.Background(), query, uid).
+	err := u.db.QueryRow(ctx, query, uid).
 		Scan(
 			&user.Id,
 			&user.Uid,

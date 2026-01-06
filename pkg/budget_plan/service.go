@@ -174,6 +174,21 @@ func (s *ServiceImpl) MoveItemAfter(ctx context.Context, planId int, itemId int,
 	}
 
 	items := plan.Items
+
+	// Validate that the item to move exists
+	itemIdx := findItem(itemId, items)
+	if itemIdx == -1 {
+		return false, fmt.Errorf("item not found")
+	}
+
+	// Validate that the preceding item exists (if not -1 or 0)
+	if precedingId > 0 {
+		prevIdx := findItem(precedingId, items)
+		if prevIdx == -1 {
+			return false, fmt.Errorf("item not found")
+		}
+	}
+
 	newPos := 0
 	prevPos, nextPos := findPreviousAndNextPositions(precedingId, items)
 	if nextPos == -1 {
@@ -182,13 +197,13 @@ func (s *ServiceImpl) MoveItemAfter(ctx context.Context, planId int, itemId int,
 		newPos = prevPos + ((nextPos - prevPos) / 2)
 	} else { // no space between prev and next - reorder all items
 		prevIdx := findItem(precedingId, items)
-		newItems := append(items[:prevIdx], append([]BudgetItem{items[findItem(itemId, items)]}, items[prevIdx+1:]...)...)
+		newItems := append(items[:prevIdx], append([]BudgetItem{items[itemIdx]}, items[prevIdx+1:]...)...)
 		err := s.reorderItems(ctx, userId, newItems)
 		if err != nil {
 			return false, err
 		}
 	}
-	budgetToMove := items[findItem(itemId, items)]
+	budgetToMove := items[itemIdx]
 	budgetToMove.Position = newPos
 	return s.repo.UpdateItemPosition(ctx, userId, budgetToMove)
 }

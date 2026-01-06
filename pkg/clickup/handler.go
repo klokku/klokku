@@ -191,6 +191,7 @@ func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	spaceId := r.URL.Query().Get("spaceId")
 	if spaceId == "" {
 		http.Error(w, "spaceId is required", http.StatusBadRequest)
+		return
 	}
 
 	folders, err := h.client.GetFolders(r.Context(), spaceId)
@@ -239,6 +240,7 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	var configurationDTO ConfigurationDTO
 	if err := json.NewDecoder(r.Body).Decode(&configurationDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	mappings := make([]BudgetItemMapping, 0, len(configurationDTO.Mappings))
@@ -294,6 +296,7 @@ func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 	configuration, err := h.service.GetConfiguration(r.Context(), budgetPlanId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	configurationDTO := ConfigurationDTO{
