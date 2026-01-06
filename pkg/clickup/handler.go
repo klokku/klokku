@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 type WorkspaceDTO struct {
@@ -28,14 +30,15 @@ type TagDTO struct {
 }
 
 type ConfigurationDTO struct {
-	WorkspaceId int                `json:"workspaceId"`
-	SpaceId     int                `json:"spaceId"`
-	FolderId    int                `json:"folderId"`
-	Mappings    []BudgetMappingDTO `json:"mappings"`
+	WorkspaceId           string             `json:"workspaceId"`
+	SpaceId               string             `json:"spaceId"`
+	FolderId              string             `json:"folderId"`
+	OnlyTasksWithPriority bool               `json:"onlyTasksWithPriority"`
+	Mappings              []BudgetMappingDTO `json:"mappings"`
 }
 
 type BudgetMappingDTO struct {
-	ClickUpSpaceId int    `json:"clickUpSpaceId"`
+	ClickUpSpaceId string `json:"clickUpSpaceId"`
 	ClickUpTagName string `json:"clickUpTagName"`
 	BudgetItemId   int    `json:"budgetItemId"`
 	Position       int    `json:"position"`
@@ -103,14 +106,9 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 // @Security XUserId
 func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	workspaceIdString := r.URL.Query().Get("workspaceId")
-	if workspaceIdString == "" {
+	workspaceId := r.URL.Query().Get("workspaceId")
+	if workspaceId == "" {
 		http.Error(w, "workspaceId is required", http.StatusBadRequest)
-		return
-	}
-	workspaceId, err := strconv.Atoi(workspaceIdString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -146,17 +144,11 @@ func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 // @Security XUserId
 func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	spaceIdString := r.URL.Query().Get("spaceId")
-	if spaceIdString == "" {
+	spaceId := r.URL.Query().Get("spaceId")
+	if spaceId == "" {
 		http.Error(w, "spaceId is required", http.StatusBadRequest)
 		return
 	}
-	spaceId, err := strconv.Atoi(spaceIdString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	tags, err := h.client.GetTags(r.Context(), spaceId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -196,15 +188,11 @@ func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 // @Security XUserId
 func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	spaceIdString := r.URL.Query().Get("spaceId")
-	if spaceIdString == "" {
+	spaceId := r.URL.Query().Get("spaceId")
+	if spaceId == "" {
 		http.Error(w, "spaceId is required", http.StatusBadRequest)
 	}
-	spaceId, err := strconv.Atoi(spaceIdString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+
 	folders, err := h.client.GetFolders(r.Context(), spaceId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -235,14 +223,27 @@ func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 // @Security XUserId
 func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	budgetPlanIdString := vars["budgetPlanId"]
+	if budgetPlanIdString == "" {
+		http.Error(w, "budgetPlanId is required", http.StatusBadRequest)
+		return
+	}
+	budgetPlanId, err := strconv.Atoi(budgetPlanIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	var configurationDTO ConfigurationDTO
 	if err := json.NewDecoder(r.Body).Decode(&configurationDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
-	mappings := make([]BudgetMapping, 0, len(configurationDTO.Mappings))
+	mappings := make([]BudgetItemMapping, 0, len(configurationDTO.Mappings))
 	for _, mappingDTO := range configurationDTO.Mappings {
-		mappings = append(mappings, BudgetMapping{
+		mappings = append(mappings, BudgetItemMapping{
 			ClickupSpaceId: mappingDTO.ClickUpSpaceId,
 			ClickupTagName: mappingDTO.ClickUpTagName,
 			BudgetItemId:   mappingDTO.BudgetItemId,
@@ -251,13 +252,14 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	configuration := Configuration{
-		WorkspaceId: configurationDTO.WorkspaceId,
-		SpaceId:     configurationDTO.SpaceId,
-		FolderId:    configurationDTO.FolderId,
-		Mappings:    mappings,
+		WorkspaceId:           configurationDTO.WorkspaceId,
+		SpaceId:               configurationDTO.SpaceId,
+		FolderId:              configurationDTO.FolderId,
+		OnlyTasksWithPriority: configurationDTO.OnlyTasksWithPriority,
+		Mappings:              mappings,
 	}
 
-	err := h.service.StoreConfiguration(r.Context(), configuration)
+	err = h.service.StoreConfiguration(r.Context(), budgetPlanId, configuration)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -276,16 +278,30 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 // @Security XUserId
 func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configuration, err := h.service.GetConfiguration(r.Context())
+
+	vars := mux.Vars(r)
+	budgetPlanIdString := vars["budgetPlanId"]
+	if budgetPlanIdString == "" {
+		http.Error(w, "budgetPlanId is required", http.StatusBadRequest)
+		return
+	}
+	budgetPlanId, err := strconv.Atoi(budgetPlanIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	configuration, err := h.service.GetConfiguration(r.Context(), budgetPlanId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	configurationDTO := ConfigurationDTO{
-		WorkspaceId: configuration.WorkspaceId,
-		SpaceId:     configuration.SpaceId,
-		FolderId:    configuration.FolderId,
-		Mappings:    make([]BudgetMappingDTO, 0, len(configuration.Mappings)),
+		WorkspaceId:           configuration.WorkspaceId,
+		SpaceId:               configuration.SpaceId,
+		FolderId:              configuration.FolderId,
+		OnlyTasksWithPriority: configuration.OnlyTasksWithPriority,
+		Mappings:              make([]BudgetMappingDTO, 0, len(configuration.Mappings)),
 	}
 	for _, mapping := range configuration.Mappings {
 		configurationDTO.Mappings = append(configurationDTO.Mappings, BudgetMappingDTO{
@@ -364,4 +380,37 @@ func (h *Handler) GetTasks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// DeleteBudgetPlanConfiguration godoc
+// @Summary Delete ClickUp configuration for budget plan
+// @Description Remove ClickUp integration configuration for a specific budget plan
+// @Tags ClickUp
+// @Param budgetPlanId path int true "Budget Plan ID"
+// @Success 204 "No Content"
+// @Failure 400 {string} string "Bad Request"
+// @Router /api/integrations/clickup/configuration/{budgetPlanId} [delete]
+// @Security XUserId
+func (h *Handler) DeleteBudgetPlanConfiguration(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	budgetPlanIdString := vars["budgetPlanId"]
+	if budgetPlanIdString == "" {
+		http.Error(w, "budgetPlanId is required", http.StatusBadRequest)
+		return
+	}
+	budgetPlanId, err := strconv.Atoi(budgetPlanIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = h.service.DeleteBudgetPlanConfiguration(r.Context(), budgetPlanId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return
 }

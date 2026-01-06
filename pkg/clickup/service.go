@@ -5,13 +5,15 @@ import (
 	"fmt"
 
 	"github.com/klokku/klokku/pkg/user"
+	log "github.com/sirupsen/logrus"
 )
 
 type Service interface {
-	StoreConfiguration(ctx context.Context, config Configuration) error
-	GetConfiguration(ctx context.Context) (Configuration, error)
-	DisableIntegration(ctx context.Context) error
+	StoreConfiguration(ctx context.Context, budgetPlanId int, config Configuration) error
+	GetConfiguration(ctx context.Context, budgetPlanId int) (Configuration, error)
 	GetTasksByBudgetItemId(ctx context.Context, budgetItemId int) ([]Task, error)
+	DisableIntegration(ctx context.Context) error
+	DeleteBudgetPlanConfiguration(ctx context.Context, budgetPlanId int) error
 }
 
 type ServiceImpl struct {
@@ -23,43 +25,25 @@ func NewServiceImpl(repo Repository, clickUpClient Client) *ServiceImpl {
 	return &ServiceImpl{repo: repo, client: clickUpClient}
 }
 
-func (s *ServiceImpl) StoreConfiguration(ctx context.Context, config Configuration) error {
+func (s *ServiceImpl) StoreConfiguration(ctx context.Context, budgetPlanId int, config Configuration) error {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	return s.repo.StoreConfiguration(ctx, userId, config)
+	return s.repo.StoreConfiguration(ctx, userId, budgetPlanId, config)
 }
 
-func (s *ServiceImpl) GetConfiguration(ctx context.Context) (Configuration, error) {
+func (s *ServiceImpl) GetConfiguration(ctx context.Context, budgetPlanId int) (Configuration, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return Configuration{}, fmt.Errorf("failed to get current user: %w", err)
 	}
-	configuration, err := s.repo.GetConfiguration(ctx, userId)
+	configuration, err := s.repo.GetConfiguration(ctx, userId, budgetPlanId)
 	if configuration == nil {
 		return Configuration{}, err
 	}
 	return *configuration, nil
-}
-
-func (s *ServiceImpl) DisableIntegration(ctx context.Context) error {
-	userId, err := user.CurrentId(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get current user: %w", err)
-	}
-
-	err = s.repo.DeleteConfiguration(ctx, userId)
-	if err != nil {
-		return err
-	}
-
-	err = s.repo.DeleteAuthData(ctx, userId)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *ServiceImpl) GetTasksByBudgetItemId(ctx context.Context, budgetItemId int) ([]Task, error) {
@@ -68,22 +52,15 @@ func (s *ServiceImpl) GetTasksByBudgetItemId(ctx context.Context, budgetItemId i
 		return nil, fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	configuration, err := s.repo.GetConfiguration(ctx, userId)
+	configuration, err := s.repo.GetConfigurationWithMappingByBudgetItemId(ctx, userId, budgetItemId)
 	if err != nil {
 		return nil, err
 	}
-
-	var clickUpTagName string
-	for _, mapping := range configuration.Mappings {
-		if mapping.BudgetItemId == budgetItemId {
-			clickUpTagName = mapping.ClickupTagName
-		}
-	}
-	if clickUpTagName == "" {
+	if configuration == nil || len(configuration.Mappings) == 0 {
+		log.Debugf("No ClickUp mappings found for budget item ID %d", budgetItemId)
 		return []Task{}, nil
 	}
-
-	var allTasks []Task
+	allTasks := make([]Task, 0)
 	page := 0
 
 	for {
@@ -93,7 +70,7 @@ func (s *ServiceImpl) GetTasksByBudgetItemId(ctx context.Context, budgetItemId i
 			configuration.SpaceId,
 			configuration.FolderId,
 			page,
-			clickUpTagName,
+			configuration.Mappings[0].ClickupTagName,
 			configuration.OnlyTasksWithPriority,
 		)
 		if err != nil {
@@ -105,10 +82,51 @@ func (s *ServiceImpl) GetTasksByBudgetItemId(ctx context.Context, budgetItemId i
 			break
 		}
 
+		if page > 100 {
+			log.Infof("Reached maximum page limit of 100 for budget item ID %d", budgetItemId)
+			break
+		}
+
 		// Append the tasks from this page to our result
 		allTasks = append(allTasks, tasks...)
 		page++
 	}
 
 	return allTasks, nil
+}
+
+func (s *ServiceImpl) DisableIntegration(ctx context.Context) error {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	err = s.repo.DeleteAllConfigurations(ctx, userId)
+	if err != nil {
+		return err
+	}
+
+	err = s.repo.DeleteAuthData(ctx, userId)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *ServiceImpl) DeleteBudgetPlanConfiguration(ctx context.Context, budgetPlanId int) error {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	if budgetPlanId <= 0 {
+		return fmt.Errorf("invalid budget plan ID: %d", budgetPlanId)
+	}
+
+	err = s.repo.DeleteBudgetPlanConfiguration(ctx, userId, budgetPlanId)
+	if err != nil {
+		return fmt.Errorf("failed to delete configuration for budget plan ID %d: %w", budgetPlanId, err)
+	}
+
+	return nil
 }

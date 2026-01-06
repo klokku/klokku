@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -27,11 +28,11 @@ type Repository interface {
 }
 
 type repositoryImpl struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 	tx pgx.Tx
 }
 
-func NewRepo(db *pgx.Conn) Repository {
+func NewRepo(db *pgxpool.Pool) Repository {
 	return &repositoryImpl{db: db}
 }
 
@@ -79,6 +80,7 @@ func (r *repositoryImpl) GetItemsForWeek(ctx context.Context, userId int, weekNu
 	query := `SELECT 
     			item.id,
     			item.budget_item_id,
+    			item.budget_plan_id,
     			item.week_number,
     			item.name,
     			item.weekly_duration_sec,
@@ -105,6 +107,7 @@ func (r *repositoryImpl) GetItemsForWeek(ctx context.Context, userId int, weekNu
 		if err := rows.Scan(
 			&item.Id,
 			&item.BudgetItemId,
+			&item.BudgetPlanId,
 			&itemWeekNumberString,
 			&item.Name,
 			&weeklyDurationSec,
@@ -147,6 +150,7 @@ func (r *repositoryImpl) GetItem(ctx context.Context, userId int, id int) (Weekl
 	query := `SELECT
     			item.id,
     			item.budget_item_id,
+    			item.budget_plan_id,
     			item.week_number,
     			item.name,
     			item.weekly_duration_sec,
@@ -162,6 +166,7 @@ func (r *repositoryImpl) GetItem(ctx context.Context, userId int, id int) (Weekl
 	err := r.getQueryer().QueryRow(ctx, query, userId, id).Scan(
 		&item.Id,
 		&item.BudgetItemId,
+		&item.BudgetPlanId,
 		&itemWeekNumberString,
 		&item.Name,
 		&weeklyDurationSec,
@@ -189,6 +194,7 @@ func (r *repositoryImpl) UpdateItem(ctx context.Context, userId int, id int, wee
      			RETURNING
      			     item.id,
     					 item.budget_item_id,
+     			         item.budget_plan_id,
     					 item.week_number,
     					 item.name,
     					 item.weekly_duration_sec,
@@ -202,6 +208,7 @@ func (r *repositoryImpl) UpdateItem(ctx context.Context, userId int, id int, wee
 	err := r.getQueryer().QueryRow(ctx, query, weeklyDuration.Seconds(), notes, userId, id).Scan(
 		&item.Id,
 		&item.BudgetItemId,
+		&item.BudgetPlanId,
 		&itemWeekNumberString,
 		&item.Name,
 		&weeklyDurationSec,
@@ -237,7 +244,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
 			valuesBuilder.WriteByte(',')
 		}
 		valuesBuilder.WriteString("(")
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 11; i++ {
 			if i > 0 {
 				valuesBuilder.WriteByte(',')
 			}
@@ -249,6 +256,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
 		args = append(args,
 			userId,
 			item.BudgetItemId,
+			item.BudgetPlanId,
 			item.WeekNumber.String(),
 			item.Name,
 			item.WeeklyDuration.Seconds(),
@@ -263,6 +271,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
 	query := fmt.Sprintf(`INSERT INTO weekly_plan_item (
                             user_id,
                             budget_item_id,
+                            budget_plan_id,
                             week_number,
                             name,
                             weekly_duration_sec,
@@ -274,6 +283,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
                   ) VALUES %s RETURNING 
                             id,
                             budget_item_id,
+                            budget_plan_id,
                             week_number,
                             name,
                             weekly_duration_sec,
@@ -297,6 +307,7 @@ func (r *repositoryImpl) createItems(ctx context.Context, userId int, items []We
 		err := rows.Scan(
 			&item.Id,
 			&item.BudgetItemId,
+			&item.BudgetPlanId,
 			&weekNumberString,
 			&item.Name,
 			&weeklyDurationSec,

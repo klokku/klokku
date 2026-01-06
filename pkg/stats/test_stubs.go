@@ -2,9 +2,11 @@ package stats
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"time"
 
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/weekly_plan"
 )
@@ -61,4 +63,42 @@ func (s *currentEventProviderStub) set(event *current_event.CurrentEvent) {
 
 func (s *currentEventProviderStub) reset() {
 	s.event = nil
+}
+
+type budgetPlanReaderStub struct {
+	plans []budget_plan.BudgetPlan
+}
+
+func newBudgetPlanReaderStub() *budgetPlanReaderStub {
+	return &budgetPlanReaderStub{
+		plans: []budget_plan.BudgetPlan{},
+	}
+}
+
+func (s *budgetPlanReaderStub) GetPlan(ctx context.Context, planId int) (budget_plan.BudgetPlan, error) {
+	for _, plan := range s.plans {
+		if plan.Id == planId {
+			return plan, nil
+		}
+	}
+	return budget_plan.BudgetPlan{}, errors.New("plan not found")
+}
+
+func (s *budgetPlanReaderStub) addPlan(plan budget_plan.BudgetPlan) {
+	s.plans = append(s.plans, plan)
+}
+
+func (s *budgetPlanReaderStub) reset() {
+	s.plans = []budget_plan.BudgetPlan{}
+}
+
+func (s *budgetPlanReaderStub) GetItem(ctx context.Context, budgetItemId int) (budget_plan.BudgetItem, error) {
+	for _, item := range s.plans {
+		for _, budgetItem := range item.Items {
+			if budgetItem.Id == budgetItemId {
+				return budgetItem, nil
+			}
+		}
+	}
+	return budget_plan.BudgetItem{}, errors.New("budget item not found")
 }

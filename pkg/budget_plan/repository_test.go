@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/test_utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +16,7 @@ import (
 )
 
 var pgContainer *postgres.PostgresContainer
-var openDb func() *pgx.Conn
+var openDb func() *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	pgContainer, openDb = test_utils.TestWithDB()
@@ -34,7 +34,7 @@ func setupTestRepository(t *testing.T) (context.Context, Repository, int) {
 	db := openDb()
 	repository := NewBudgetPlanRepo(db)
 	t.Cleanup(func() {
-		db.Close(ctx)
+		db.Close()
 		err := pgContainer.Restore(ctx)
 		require.NoError(t, err)
 	})
@@ -238,7 +238,7 @@ func TestRepositoryImpl_StoreItem(t *testing.T) {
 	}
 
 	// when
-	itemId, err := repo.StoreItem(ctx, userId, item)
+	itemId, _, err := repo.StoreItem(ctx, userId, item)
 
 	// then
 	assert.NoError(t, err)
@@ -256,7 +256,7 @@ func TestRepositoryImpl_UpdateItem(t *testing.T) {
 		// given
 		ctx, repo, userId := setupTestRepository(t)
 		plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-		itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+		itemId, position, _ := repo.StoreItem(ctx, userId, BudgetItem{
 			PlanId:            plan.Id,
 			Name:              "Original",
 			WeeklyDuration:    3600, // 1 hour in seconds
@@ -283,13 +283,14 @@ func TestRepositoryImpl_UpdateItem(t *testing.T) {
 		assert.Equal(t, 7, storedPlan.Items[0].WeeklyOccurrences)
 		assert.Equal(t, "#FFFFFF", storedPlan.Items[0].Color)
 		assert.Equal(t, "new", storedPlan.Items[0].Icon)
+		assert.Equal(t, position, storedPlan.Items[0].Position)
 	})
 
 	t.Run("should return updated item", func(t *testing.T) {
 		// given
 		ctx, repo, userId := setupTestRepository(t)
 		plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-		itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+		itemId, position, _ := repo.StoreItem(ctx, userId, BudgetItem{
 			PlanId:            plan.Id,
 			Name:              "Original",
 			WeeklyDuration:    3600, // 1 hour in seconds
@@ -315,6 +316,7 @@ func TestRepositoryImpl_UpdateItem(t *testing.T) {
 		assert.Equal(t, 7, updatedItem.WeeklyOccurrences)
 		assert.Equal(t, "#FFFFFF", updatedItem.Color)
 		assert.Equal(t, "new", updatedItem.Icon)
+		assert.Equal(t, position, updatedItem.Position)
 	})
 }
 
@@ -322,7 +324,7 @@ func TestRepositoryImpl_UpdateItemPosition(t *testing.T) {
 	// given
 	ctx, repo, userId := setupTestRepository(t)
 	plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-	itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+	itemId, _, _ := repo.StoreItem(ctx, userId, BudgetItem{
 		PlanId: plan.Id,
 		Name:   "Item",
 	})
@@ -344,7 +346,7 @@ func TestRepositoryImpl_DeleteItem(t *testing.T) {
 	// given
 	ctx, repo, userId := setupTestRepository(t)
 	plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-	itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+	itemId, _, _ := repo.StoreItem(ctx, userId, BudgetItem{
 		PlanId:   plan.Id,
 		Name:     "Item to Delete",
 		Position: 0,
@@ -358,37 +360,6 @@ func TestRepositoryImpl_DeleteItem(t *testing.T) {
 	assert.True(t, ok)
 	storedPlan, _ := repo.GetPlan(ctx, userId, plan.Id)
 	assert.Empty(t, storedPlan.Items)
-}
-
-func TestRepositoryImpl_FindMaxPlanItemPosition_WithItems(t *testing.T) {
-	t.Run("should return the max position of all items", func(t *testing.T) {
-		// given
-		ctx, repo, userId := setupTestRepository(t)
-		plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-		repo.StoreItem(ctx, userId, BudgetItem{PlanId: plan.Id, Name: "Item 1", Position: 0})
-		repo.StoreItem(ctx, userId, BudgetItem{PlanId: plan.Id, Name: "Item 2", Position: 5})
-		repo.StoreItem(ctx, userId, BudgetItem{PlanId: plan.Id, Name: "Item 3", Position: 3})
-
-		// when
-		maxPosition, err := repo.FindMaxPlanItemPosition(ctx, plan.Id, userId)
-
-		// then
-		assert.NoError(t, err)
-		assert.Equal(t, 5, maxPosition)
-	})
-
-	t.Run("should return 0 for an empty plan", func(t *testing.T) {
-		// given
-		ctx, repo, userId := setupTestRepository(t)
-		plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Empty Plan"})
-
-		// when
-		maxPosition, err := repo.FindMaxPlanItemPosition(ctx, plan.Id, userId)
-
-		// then
-		assert.NoError(t, err)
-		assert.Equal(t, 0, maxPosition)
-	})
 }
 
 func TestRepositoryImpl_GetCurrentPlan(t *testing.T) {
@@ -443,7 +414,7 @@ func TestRepositoryImpl_GetItem(t *testing.T) {
 	// given
 	ctx, repo, userId := setupTestRepository(t)
 	plan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan"})
-	itemId, _ := repo.StoreItem(ctx, userId, BudgetItem{
+	itemId, _, _ := repo.StoreItem(ctx, userId, BudgetItem{
 		PlanId:            plan.Id,
 		Name:              "Item 1",
 		WeeklyDuration:    30 * time.Minute,

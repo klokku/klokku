@@ -11,6 +11,11 @@ import (
 	rest "github.com/klokku/klokku/internal/rest"
 )
 
+type WeeklyPlanDTO struct {
+	BudgetPlanId int                 `json:"budgetPlanId"`
+	Items        []WeeklyPlanItemDTO `json:"items"`
+}
+
 type WeeklyPlanItemDTO struct {
 	Id                int    `json:"id"`
 	BudgetItemId      int    `json:"budgetItemId"`
@@ -33,18 +38,18 @@ func NewHandler(service Service) *Handler {
 	}
 }
 
-// GetItems godoc
+// GetPlan godoc
 // @Summary Get weekly plan items
 // @Description Retrieve all items for a specific week
 // @Tags WeeklyPlan
 // @Produce json
 // @Param date query string true "Date in RFC3339 format (can be any day of the week)"
-// @Success 200 {array} WeeklyPlanItemDTO
+// @Success 200 {object} WeeklyPlanDTO
 // @Failure 400 {object} rest.ErrorResponse "Invalid date format"
 // @Failure 403 {string} string "User not found"
 // @Router /api/weeklyplan [get]
 // @Security XUserId
-func (h *Handler) GetItems(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Can be any day of the given week
@@ -63,15 +68,21 @@ func (h *Handler) GetItems(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.service.GetItemsForWeek(r.Context(), weekDate)
 	if err != nil {
+		if errors.Is(err, ErrNoCurrentPlan) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	var budgetPlanId int
 	itemsDTO := make([]WeeklyPlanItemDTO, 0, len(items))
 	for _, item := range items {
 		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
+		budgetPlanId = item.BudgetPlanId
 	}
-	if err := json.NewEncoder(w).Encode(itemsDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{budgetPlanId, itemsDTO}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -201,7 +212,7 @@ func (h *Handler) ResetItem(w http.ResponseWriter, r *http.Request) {
 // @Tags WeeklyPlan
 // @Produce json
 // @Param date query string true "Date in RFC3339 format (can be any day of the week)"
-// @Success 200 {array} WeeklyPlanItemDTO
+// @Success 200 {object} WeeklyPlanDTO
 // @Failure 400 {object} rest.ErrorResponse "Invalid date format"
 // @Failure 403 {string} string "User not found"
 // @Router /api/weeklyplan [delete]
@@ -227,11 +238,13 @@ func (h *Handler) ResetWeek(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var budgetPlanId int
 	var itemsDTO []WeeklyPlanItemDTO
 	for _, item := range itemsAfterReset {
 		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
+		budgetPlanId = item.BudgetPlanId
 	}
-	if err := json.NewEncoder(w).Encode(itemsDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{budgetPlanId, itemsDTO}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

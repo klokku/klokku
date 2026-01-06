@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -21,11 +22,11 @@ type Repository interface {
 	DeleteEvent(ctx context.Context, userId int, eventId string) error
 }
 type repositoryImpl struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 	tx pgx.Tx
 }
 
-func NewRepository(db *pgx.Conn) Repository {
+func NewRepository(db *pgxpool.Pool) Repository {
 	return &repositoryImpl{db: db, tx: nil}
 }
 

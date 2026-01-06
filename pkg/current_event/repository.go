@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -17,10 +18,10 @@ type Repository interface {
 }
 
 type repositoryImpl struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
-func NewEventRepo(db *pgx.Conn) Repository {
+func NewEventRepo(db *pgxpool.Pool) Repository {
 	return &repositoryImpl{db: db}
 }
 
@@ -57,13 +58,14 @@ func (r *repositoryImpl) DeleteCurrentEvent(ctx context.Context, userId int) err
 
 func (r *repositoryImpl) FindCurrentEvent(ctx context.Context, userId int) (CurrentEvent, error) {
 	query := `
-		SELECT budget_item_id, budget_item_name, plan_item_weekly_duration_sec, start_time
+		SELECT id, budget_item_id, budget_item_name, plan_item_weekly_duration_sec, start_time
 		FROM current_event e
 		WHERE e.user_id = $1 LIMIT 1`
 
 	var weeklyTime int
 	var event CurrentEvent
-	err := r.db.QueryRow(ctx, query, userId).Scan(&event.PlanItem.BudgetItemId, &event.PlanItem.Name, &weeklyTime, &event.StartTime)
+	err := r.db.QueryRow(ctx, query, userId).
+		Scan(&event.Id, &event.PlanItem.BudgetItemId, &event.PlanItem.Name, &weeklyTime, &event.StartTime)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return CurrentEvent{}, nil

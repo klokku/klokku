@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var location, _ = time.LoadLocation("Europe/Warsaw")
+
 func TestWeekNumberEqual(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -113,6 +115,11 @@ func TestWeekNumberFromDate(t *testing.T) {
 			name: "invalid week start day defaults to Monday",
 			args: args{time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC), time.Weekday(42)},
 			want: WeekNumber{Year: 2025, Week: 5},
+		},
+		{
+			name: "first week of the year is the week containing January 4th",
+			args: args{time.Date(2025, 12, 29, 0, 0, 0, 0, location), time.Monday},
+			want: WeekNumber{Year: 2026, Week: 1},
 		},
 	}
 	for _, tt := range tests {

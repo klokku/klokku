@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -21,10 +21,10 @@ type Repo interface {
 }
 
 type UserRepoImpl struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
-func NewUserRepo(db *pgx.Conn) *UserRepoImpl {
+func NewUserRepo(db *pgxpool.Pool) *UserRepoImpl {
 	return &UserRepoImpl{db: db}
 }
 
@@ -33,7 +33,7 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 	if eventCalendarType == "" {
 		eventCalendarType = KlokkuCalendar
 	}
-	query := `INSERT INTO "user" (uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
+	query := `INSERT INTO users (uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
 				event_calendar_google_calendar_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`
 	var id int
 	err := u.db.QueryRow(ctx, query,
@@ -55,8 +55,9 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 
 func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
-				event_calendar_google_calendar_id FROM "user" WHERE id = $1`
+				event_calendar_google_calendar_id FROM users WHERE id = $1`
 	var user User
+	var googleCalendarId sql.NullString
 	err := u.db.QueryRow(context.Background(), query, id).
 		Scan(
 			&user.Id,
@@ -67,7 +68,7 @@ func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 			&user.Settings.Timezone,
 			&user.Settings.WeekFirstDay,
 			&user.Settings.EventCalendarType,
-			&user.Settings.GoogleCalendar.CalendarId,
+			&googleCalendarId,
 		)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Errorf("user with id %d not found: %v", id, err)
@@ -76,12 +77,15 @@ func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 		log.Errorf("failed to get user: %v", err)
 		return User{}, err
 	}
+	if googleCalendarId.Valid {
+		user.Settings.GoogleCalendar.CalendarId = googleCalendarId.String
+	}
 	return user, nil
 }
 
 func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type,
-				event_calendar_google_calendar_id FROM "user" WHERE uid = $1`
+				event_calendar_google_calendar_id FROM users WHERE uid = $1`
 
 	var user User
 	var googleCalendarId sql.NullString
@@ -111,7 +115,7 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 }
 
 func (u *UserRepoImpl) UpdateUser(ctx context.Context, userId int, user User) (User, error) {
-	query := `UPDATE "user" SET display_name = $1, timezone = $2, week_first_day = $3, event_calendar_type = $4, 
+	query := `UPDATE users SET display_name = $1, timezone = $2, week_first_day = $3, event_calendar_type = $4, 
 				event_calendar_google_calendar_id = $5 WHERE id = $6`
 	result, err := u.db.Exec(ctx, query,
 		user.DisplayName,
@@ -133,7 +137,7 @@ func (u *UserRepoImpl) UpdateUser(ctx context.Context, userId int, user User) (U
 }
 
 func (u *UserRepoImpl) DeleteUser(ctx context.Context, id int) error {
-	query := `DELETE FROM "user" WHERE id = $1`
+	query := `DELETE FROM users WHERE id = $1`
 	result, err := u.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
@@ -148,7 +152,7 @@ func (u *UserRepoImpl) DeleteUser(ctx context.Context, id int) error {
 
 func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
-		        event_calendar_google_calendar_id FROM "user"`
+		        event_calendar_google_calendar_id FROM users`
 	rows, err := u.db.Query(ctx, query)
 	if err != nil {
 		log.Errorf("failed to get users: %v", err)
@@ -158,11 +162,15 @@ func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 	users := make([]User, 0, 10)
 	for rows.Next() {
 		var user User
+		var googleCalendarId sql.NullString
 		err := rows.Scan(&user.Id, &user.Uid, &user.Username, &user.DisplayName, &user.PhotoUrl, &user.Settings.Timezone,
-			&user.Settings.WeekFirstDay, &user.Settings.EventCalendarType, &user.Settings.GoogleCalendar.CalendarId)
+			&user.Settings.WeekFirstDay, &user.Settings.EventCalendarType, &googleCalendarId)
 		if err != nil {
 			log.Errorf("failed to scan user: %v", err)
 			return nil, err
+		}
+		if googleCalendarId.Valid {
+			user.Settings.GoogleCalendar.CalendarId = googleCalendarId.String
 		}
 		users = append(users, user)
 		if err := rows.Err(); err != nil {
@@ -174,7 +182,7 @@ func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 }
 
 func (u *UserRepoImpl) IsUsernameAvailable(ctx context.Context, username string) (bool, error) {
-	query := `SELECT COUNT(*) FROM "user" WHERE username = $1`
+	query := `SELECT COUNT(*) FROM users WHERE username = $1`
 	var count int
 	err := u.db.QueryRow(ctx, query, username).Scan(&count)
 	if err != nil {

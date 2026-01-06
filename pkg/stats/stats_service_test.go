@@ -2,11 +2,14 @@ package stats
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/klokku/klokku/internal/utils"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/user"
@@ -18,12 +21,14 @@ var location, _ = time.LoadLocation("Europe/Warsaw")
 var calendarStub = calendar.NewStubCalendar()
 var clock = &utils.MockClock{FixedNow: time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)}
 var weeklyPlanService = newWeeklyPlanItemsReaderStub()
+var budgetPlanService = newBudgetPlanReaderStub()
 var currentEventStub = newCurrentEventProviderStub()
 
 func setup(t *testing.T) (StatsService, context.Context, func()) {
 	service := &StatsServiceImpl{
 		currentEventProvider: currentEventStub,
 		weeklyPlanService:    weeklyPlanService,
+		budgetPlanService:    budgetPlanService,
 		calendar:             calendarStub,
 		clock:                clock,
 	}
@@ -44,6 +49,7 @@ func setup(t *testing.T) (StatsService, context.Context, func()) {
 	return service, ctx, func() {
 		t.Log("Teardown after test")
 		weeklyPlanService.reset()
+		budgetPlanService.reset()
 		currentEventStub.reset()
 		calendarStub.Cleanup()
 	}
@@ -57,18 +63,38 @@ func TestStatsServiceImpl_GetStats(t *testing.T) {
 	startTime := time.Date(2023, time.January, 2, 0, 0, 0, 0, location)
 	endTime := time.Date(2023, time.January, 9, 0, 0, 0, 0, location).Add(-1 * time.Nanosecond)
 	planItem1 := weekly_plan.WeeklyPlanItem{
+		BudgetPlanId:   1,
 		Id:             101,
 		BudgetItemId:   1,
 		Name:           "BudgetItem 1",
 		WeeklyDuration: time.Duration(120) * time.Minute,
 	}
 	planItem2 := weekly_plan.WeeklyPlanItem{
+		BudgetPlanId:   1,
 		Id:             102,
 		BudgetItemId:   2,
 		Name:           "BudgetItem 2",
 		WeeklyDuration: time.Duration(120) * time.Minute,
 	}
 	weeklyPlanService.setItems([]weekly_plan.WeeklyPlanItem{planItem1, planItem2})
+	budgetPlan := budget_plan.BudgetPlan{
+		Id: 1,
+		Items: []budget_plan.BudgetItem{
+			{
+				Id:             1,
+				PlanId:         1,
+				Name:           "BudgetItem 1",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+			{
+				Id:             2,
+				PlanId:         1,
+				Name:           "BudgetItem 2",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+		},
+	}
+	budgetPlanService.addPlan(budgetPlan)
 	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
 		Summary:   "BudgetItem 1",
 		StartTime: startTime,
@@ -96,7 +122,7 @@ func TestStatsServiceImpl_GetStats(t *testing.T) {
 	})
 
 	// when
-	stats, _ := statsService.GetStats(ctx, startTime)
+	stats, _ := statsService.GetWeeklyStats(ctx, startTime)
 
 	// then
 	assert.NotNil(t, stats)
@@ -128,8 +154,28 @@ func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
 
 	// given
 	startTime := time.Date(2023, time.January, 2, 0, 0, 0, 0, location)
-	planItem1 := weekly_plan.WeeklyPlanItem{Id: 101, BudgetItemId: 1, Name: "BudgetItem 1", WeeklyDuration: time.Duration(120) * time.Minute}
+	planItem1 := weekly_plan.WeeklyPlanItem{
+		Id:             101,
+		BudgetPlanId:   1,
+		BudgetItemId:   1,
+		Name:           "BudgetItem 1",
+		WeeklyDuration: time.Duration(120) * time.Minute,
+	}
 	weeklyPlanService.setItems([]weekly_plan.WeeklyPlanItem{planItem1})
+	budgetPlan := budget_plan.BudgetPlan{
+		Id:        1,
+		Name:      "Some Plan",
+		IsCurrent: true,
+		Items: []budget_plan.BudgetItem{
+			{
+				Id:             1,
+				PlanId:         1,
+				Name:           "BudgetItem 1",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+		},
+	}
+	budgetPlanService.addPlan(budgetPlan)
 
 	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
 		Summary:   "BudgetItem 1",
@@ -149,7 +195,7 @@ func TestStatsServiceImpl_GetStats_WithCurrentEvent(t *testing.T) {
 	})
 
 	// when
-	stats, _ := statsService.GetStats(ctx, startTime)
+	stats, _ := statsService.GetWeeklyStats(ctx, startTime)
 
 	// then
 	// check on a budget list
@@ -197,6 +243,12 @@ func Test_weekTimeRange(t *testing.T) {
 			want:  time.Date(2023, 10, 15, 0, 0, 0, 0, time.UTC),
 			want1: time.Date(2023, 10, 21, 23, 59, 59, 999999999, time.UTC),
 		},
+		{
+			name:  "should return fill week range when given date is the last nanosecond of the week",
+			args:  args{date: time.Date(2025, 9, 14, 23, 59, 59, 999999999, time.UTC), weekStartDay: time.Monday},
+			want:  time.Date(2025, 9, 8, 0, 0, 0, 0, time.UTC),
+			want1: time.Date(2025, 9, 14, 23, 59, 59, 999999999, time.UTC),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,5 +256,145 @@ func Test_weekTimeRange(t *testing.T) {
 			assert.Equalf(t, tt.want, got, "weekTimeRange(%v, %v)", tt.args.date, tt.args.weekStartDay)
 			assert.Equalf(t, tt.want1, got1, "weekTimeRange(%v, %v)", tt.args.date, tt.args.weekStartDay)
 		})
+	}
+}
+
+func Test_GetPlanItemHistoryStats(t *testing.T) {
+	t.Run("should calculate history stats correctly", func(t *testing.T) {
+		statsService, ctx, teardown := setup(t)
+		defer teardown()
+
+		// given
+		planItem1 := weekly_plan.WeeklyPlanItem{
+			Id:             101,
+			BudgetPlanId:   1,
+			BudgetItemId:   154,
+			Name:           "BudgetItem 1",
+			WeeklyDuration: time.Duration(300) * time.Minute, // 5 hours
+		}
+		weeklyPlanService.setItems([]weekly_plan.WeeklyPlanItem{planItem1})
+		budgetPlan := budget_plan.BudgetPlan{
+			Id:        1,
+			Name:      "Some plan",
+			IsCurrent: false,
+			Items: []budget_plan.BudgetItem{
+				{
+					Id:             154,
+					PlanId:         1,
+					Name:           "BudgetItem 1",
+					WeeklyDuration: time.Duration(300) * time.Minute,
+				},
+			},
+		}
+		budgetPlanService.addPlan(budgetPlan)
+
+		addCalendarEvents(ctx,
+			10,
+			time.Date(2025, 9, 1, 0, 0, 0, 0, location),
+			time.Date(2025, 9, 7, 23, 59, 59, 999999999, location),
+			154,
+			330*time.Minute, // 5.5 hours
+		)
+		addCalendarEvents(ctx,
+			7,
+			time.Date(2025, 9, 8, 0, 0, 0, 0, location),
+			time.Date(2025, 9, 14, 23, 59, 59, 999999999, location),
+			154,
+			210*time.Minute, // 3.5 hours
+		)
+		addCalendarEvents(ctx,
+			11,
+			time.Date(2025, 9, 15, 0, 0, 0, 0, location),
+			time.Date(2025, 9, 21, 23, 59, 59, 999999999, location),
+			154,
+			360*time.Minute, // 6 hours
+		)
+		addCalendarEvents(ctx,
+			8,
+			time.Date(2025, 9, 22, 0, 0, 0, 0, location),
+			time.Date(2025, 9, 28, 23, 59, 59, 999999999, location),
+			154,
+			390*time.Minute, // 6.5 hours
+		)
+		statsStartDate := time.Date(2025, 9, 1, 0, 0, 0, 0, location)
+		statsEndDate := time.Date(2025, 9, 28, 23, 59, 59, 999999999, location)
+
+		// when
+		stats, _ := statsService.GetPlanItemByWeekHistoryStats(ctx, statsStartDate, statsEndDate, 154)
+
+		// then
+		assert.Equal(t, statsStartDate, stats.StartDate)
+		assert.Equal(t, statsEndDate, stats.EndDate)
+		assert.Equal(t, 4, len(stats.StatsPerWeek))
+		assert.Equal(t, time.Date(2025, 9, 1, 0, 0, 0, 0, location), stats.StatsPerWeek[0].StartDate)
+		assert.Equal(t, time.Date(2025, 9, 7, 23, 59, 59, 999999999, location), stats.StatsPerWeek[0].EndDate)
+		assert.Equal(t, 330*time.Minute, stats.StatsPerWeek[0].Duration)
+		assert.Equal(t, -30*time.Minute, stats.StatsPerWeek[0].Remaining)
+		assert.Equal(t, time.Date(2025, 9, 8, 0, 0, 0, 0, location), stats.StatsPerWeek[1].StartDate)
+		assert.Equal(t, time.Date(2025, 9, 14, 23, 59, 59, 999999999, location), stats.StatsPerWeek[1].EndDate)
+		assert.Equal(t, 210*time.Minute, stats.StatsPerWeek[1].Duration)
+		assert.Equal(t, 90*time.Minute, stats.StatsPerWeek[1].Remaining)
+		assert.Equal(t, time.Date(2025, 9, 15, 0, 0, 0, 0, location), stats.StatsPerWeek[2].StartDate)
+		assert.Equal(t, time.Date(2025, 9, 21, 23, 59, 59, 999999999, location), stats.StatsPerWeek[2].EndDate)
+		assert.Equal(t, 360*time.Minute, stats.StatsPerWeek[2].Duration)
+		assert.Equal(t, -60*time.Minute, stats.StatsPerWeek[2].Remaining)
+		assert.Equal(t, time.Date(2025, 9, 22, 0, 0, 0, 0, location), stats.StatsPerWeek[3].StartDate)
+		assert.Equal(t, time.Date(2025, 9, 28, 23, 59, 59, 999999999, location), stats.StatsPerWeek[3].EndDate)
+		assert.Equal(t, 390*time.Minute, stats.StatsPerWeek[3].Duration)
+		assert.Equal(t, -90*time.Minute, stats.StatsPerWeek[3].Remaining)
+
+	})
+}
+
+func addCalendarEvents(ctx context.Context, numberOfEvents int, startTime time.Time, endTime time.Time, budgetItemId int, totalDuration time.Duration) {
+	// Generate random durations that sum to totalDuration
+	durations := make([]time.Duration, numberOfEvents)
+	remaining := totalDuration
+	minDuration := 5 * time.Minute
+
+	for i := 0; i < numberOfEvents-1; i++ {
+		// Calculate how much duration is needed for remaining events
+		remainingEvents := numberOfEvents - i - 1
+		minNeeded := minDuration * time.Duration(remainingEvents)
+
+		// Available range for this event
+		maxForThisEvent := remaining - minNeeded
+
+		if maxForThisEvent <= minDuration {
+			durations[i] = minDuration
+		} else {
+			// Random duration between minDuration and maxForThisEvent
+			rangeSize := maxForThisEvent - minDuration
+			randomDuration := time.Duration(rand.Int63n(int64(rangeSize)+1)) + minDuration
+			durations[i] = randomDuration
+		}
+		remaining -= durations[i]
+	}
+	durations[numberOfEvents-1] = remaining
+
+	// Create events sequentially without gaps to ensure they all fit
+	currentTime := startTime
+
+	for i := 0; i < numberOfEvents; i++ {
+		eventEnd := currentTime.Add(durations[i])
+
+		// Ensure we don't exceed endTime
+		if eventEnd.After(endTime) {
+			eventEnd = endTime
+		}
+
+		calendarStub.AddEvent(ctx, calendar.Event{
+			Summary:   fmt.Sprintf("Event %d", i),
+			StartTime: currentTime,
+			EndTime:   eventEnd,
+			Metadata:  calendar.EventMetadata{BudgetItemId: budgetItemId},
+		})
+
+		currentTime = eventEnd
+
+		// Stop if we've reached the end time
+		if currentTime.Equal(endTime) || currentTime.After(endTime) {
+			break
+		}
 	}
 }

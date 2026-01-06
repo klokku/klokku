@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/pkg/user"
@@ -31,12 +32,12 @@ type clickUpAuthRedirect struct {
 }
 
 type ClickUpAuth struct {
-	db          *pgx.Conn
+	db          *pgxpool.Pool
 	userService user.Service
 	oauthConfig *oauth2.Config
 }
 
-func NewClickUpAuth(db *pgx.Conn, userService user.Service, cfg config.Application) *ClickUpAuth {
+func NewClickUpAuth(db *pgxpool.Pool, userService user.Service, cfg config.Application) *ClickUpAuth {
 	oauthConfig := &oauth2.Config{
 		ClientID:     cfg.ClickUp.ClientId,
 		ClientSecret: cfg.ClickUp.ClientSecret,

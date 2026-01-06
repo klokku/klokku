@@ -46,7 +46,7 @@ definitions:
       budgetItemId:
         type: integer
       clickUpSpaceId:
-        type: integer
+        type: string
       clickUpTagName:
         type: string
       position:
@@ -55,15 +55,17 @@ definitions:
   clickup.ConfigurationDTO:
     properties:
       folderId:
-        type: integer
+        type: string
       mappings:
         items:
           $ref: '#/definitions/clickup.BudgetMappingDTO'
         type: array
+      onlyTasksWithPriority:
+        type: boolean
       spaceId:
-        type: integer
+        type: string
       workspaceId:
-        type: integer
+        type: string
     type: object
   clickup.FolderDTO:
     properties:
@@ -134,16 +136,56 @@ definitions:
       totalTime:
         type: integer
     type: object
+  stats.PlanItemDTO:
+    properties:
+      budgetItemDuration:
+        type: integer
+      budgetItemId:
+        type: integer
+      budgetPlanId:
+        type: integer
+      color:
+        type: string
+      icon:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      position:
+        type: integer
+      weeklyItemDuration:
+        type: integer
+      weeklyItemId:
+        type: integer
+      weeklyOccurrences:
+        type: integer
+    type: object
+  stats.PlanItemHistoryStatsDTO:
+    properties:
+      endDate:
+        type: string
+      startDate:
+        type: string
+      statsPerWeek:
+        items:
+          $ref: '#/definitions/stats.PlanItemStatsDTO'
+        type: array
+    type: object
   stats.PlanItemStatsDTO:
     properties:
       duration:
         type: integer
+      endDate:
+        type: string
+      planItem:
+        $ref: '#/definitions/stats.PlanItemDTO'
       remaining:
         type: integer
-      weeklyPlanItem:
-        $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
+      startDate:
+        type: string
     type: object
-  stats.StatsSummaryDTO:
+  stats.WeeklyStatsSummaryDTO:
     properties:
       endDate:
         type: string
@@ -192,12 +234,23 @@ definitions:
     properties:
       displayName:
         type: string
+      photoUrl:
+        type: string
       settings:
         $ref: '#/definitions/user.SettingsDTO'
       uid:
         type: string
       username:
         type: string
+    type: object
+  weekly_plan.WeeklyPlanDTO:
+    properties:
+      budgetPlanId:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
+        type: array
     type: object
   weekly_plan.WeeklyPlanItemDTO:
     properties:
@@ -702,11 +755,19 @@ paths:
       - application/json
       description: Start a new event with the given budget item id
       parameters:
-      - description: Budget item id
-        in: path
-        name: budgetItemId
+      - description: Event start details
+        in: body
+        name: event
         required: true
-        type: integer
+        schema:
+          properties:
+            budgetItemId:
+              type: integer
+            name:
+              type: string
+            weeklyDuration:
+              type: integer
+          type: object
       produces:
       - application/json
       responses:
@@ -913,6 +974,28 @@ paths:
       summary: Store ClickUp configuration
       tags:
       - ClickUp
+  /api/integrations/clickup/configuration/{budgetPlanId}:
+    delete:
+      description: Remove ClickUp integration configuration for a specific budget
+        plan
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: budgetPlanId
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Delete ClickUp configuration for budget plan
+      tags:
+      - ClickUp
   /api/integrations/clickup/folder:
     get:
       description: Get all folders in a ClickUp space
@@ -1058,6 +1141,46 @@ paths:
       summary: List ClickUp workspaces
       tags:
       - ClickUp
+  /api/stats/item-history:
+    get:
+      description: Retrieve statistics for a specific budget item by week for a given
+        period
+      parameters:
+      - description: Start date in RFC3339 format
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: End date in RFC3339 format
+        in: query
+        name: to
+        required: true
+        type: string
+      - description: Budget Item ID
+        in: query
+        name: budgetItemId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/stats.PlanItemHistoryStatsDTO'
+        "400":
+          description: Invalid parameters
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get historical statistics for a specific budget item
+      tags:
+      - Stats
   /api/stats/weekly:
     get:
       description: Retrieve statistics for a specific week including time spent per
@@ -1074,7 +1197,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/stats.StatsSummaryDTO'
+            $ref: '#/definitions/stats.WeeklyStatsSummaryDTO'
         "400":
           description: Invalid date format
           schema:
@@ -1344,9 +1467,7 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
-            type: array
+            $ref: '#/definitions/weekly_plan.WeeklyPlanDTO'
         "400":
           description: Invalid date format
           schema:
@@ -1374,9 +1495,7 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
-            type: array
+            $ref: '#/definitions/weekly_plan.WeeklyPlanDTO'
         "400":
           description: Invalid date format
           schema:

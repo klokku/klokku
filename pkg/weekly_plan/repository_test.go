@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/test_utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ import (
 )
 
 var pgContainer *postgres.PostgresContainer
-var openDb func() *pgx.Conn
+var openDb func() *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	pgContainer, openDb = test_utils.TestWithDB()
@@ -37,7 +37,7 @@ func setupTestRepository(t *testing.T) (context.Context, Repository, int) {
 	db := openDb()
 	repository := NewRepo(db)
 	t.Cleanup(func() {
-		db.Close(ctx)
+		db.Close()
 		err := pgContainer.Restore(ctx)
 		require.NoError(t, err)
 	})
@@ -440,6 +440,7 @@ func TestRepositoryImpl_UpdateItem(t *testing.T) {
 
 		// verify other fields remain unchanged
 		require.Equal(t, createdItem.BudgetItemId, updatedItem.BudgetItemId)
+		require.Equal(t, createdItem.BudgetPlanId, updatedItem.BudgetPlanId)
 		require.Equal(t, createdItem.WeekNumber, updatedItem.WeekNumber)
 		require.Equal(t, createdItem.Name, updatedItem.Name)
 		require.Equal(t, createdItem.Icon, updatedItem.Icon)
@@ -483,6 +484,11 @@ func weeklyItem(itemPartial WeeklyPlanItem) WeeklyPlanItem {
 	budgetItemId := 0
 	if itemPartial.BudgetItemId != 0 {
 		budgetItemId = itemPartial.BudgetItemId
+	}
+
+	budgetPlanId := 145
+	if itemPartial.BudgetPlanId != 0 {
+		budgetPlanId = itemPartial.BudgetPlanId
 	}
 
 	date := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -529,6 +535,7 @@ func weeklyItem(itemPartial WeeklyPlanItem) WeeklyPlanItem {
 
 	return WeeklyPlanItem{
 		BudgetItemId:      budgetItemId,
+		BudgetPlanId:      budgetPlanId,
 		WeekNumber:        weekNumber,
 		Name:              name,
 		WeeklyDuration:    weeklyDuration,
@@ -542,6 +549,7 @@ func weeklyItem(itemPartial WeeklyPlanItem) WeeklyPlanItem {
 
 func assertWeeklyPlanItemsEqual(t *testing.T, expected WeeklyPlanItem, actual WeeklyPlanItem) {
 	require.Equal(t, expected.BudgetItemId, actual.BudgetItemId)
+	require.Equal(t, expected.BudgetPlanId, actual.BudgetPlanId)
 	require.Equal(t, expected.WeekNumber, actual.WeekNumber)
 	require.Equal(t, expected.Name, actual.Name)
 	require.Equal(t, expected.WeeklyDuration, actual.WeeklyDuration)

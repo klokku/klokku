@@ -429,9 +429,10 @@ func DTOToPlan(planDTO BudgetPlanDTO) BudgetPlan {
 		items = append(items, DTOToItem(planDTO.Id, itemDTO))
 	}
 	return BudgetPlan{
-		Id:    planDTO.Id,
-		Name:  planDTO.Name,
-		Items: items,
+		Id:        planDTO.Id,
+		Name:      planDTO.Name,
+		Items:     items,
+		IsCurrent: planDTO.IsCurrent,
 	}
 }
 

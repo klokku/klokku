@@ -39,7 +39,7 @@ func NewEventHandler(eventService Service) *EventHandler {
 // @Tags CurrentEvent
 // @Accept json
 // @Produce json
-// @Param budgetItemId path int true "Budget item id"
+// @Param event body object{budgetItemId=int,name=string,weeklyDuration=int} true "Event start details"
 // @Success 201 {object} CurrentEventDTO
 // @Failure 403 {string} string "User not found"
 // @Router /api/event [post]
@@ -49,7 +49,9 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 	log.Trace("Starting new current event")
 
 	var startEventRequest struct {
-		BudgetItemId int `json:"budgetItemId"`
+		BudgetItemId   int `json:"budgetItemId"`
+		Name           string
+		WeeklyDuration int
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&startEventRequest); err != nil {
@@ -71,7 +73,9 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 	event := &CurrentEvent{
 		StartTime: startTime,
 		PlanItem: PlanItem{
-			BudgetItemId: startEventRequest.BudgetItemId,
+			BudgetItemId:   startEventRequest.BudgetItemId,
+			Name:           startEventRequest.Name,
+			WeeklyDuration: time.Duration(startEventRequest.WeeklyDuration) * time.Second,
 		},
 	}
 

@@ -83,11 +83,11 @@ func (s *ServiceImpl) GetItemsForWeek(ctx context.Context, date time.Time) ([]We
 		log.Errorf("failed to get weekly plan items for week %s: %v", weekNumber, err)
 		return nil, fmt.Errorf("failed to get weekly plan items: %w", err)
 	}
-	if len(items) > 0 {
+	if items != nil && len(items) > 0 {
 		return items, nil
 	}
 
-	currentPlan, err := s.bpReader.GetCurrentPlan(context.Background())
+	currentPlan, err := s.bpReader.GetCurrentPlan(ctx)
 	if err != nil {
 		if errors.Is(err, budget_plan.ErrPlanNotFound) {
 			return nil, ErrNoCurrentPlan
@@ -274,6 +274,7 @@ func (s *ServiceImpl) handleBudgetPlanItemUpdated(ctx context.Context, budgetIte
 func budgetPlanItemToWeekPlanItem(bpItem budget_plan.BudgetItem, weekNumber WeekNumber) WeeklyPlanItem {
 	return WeeklyPlanItem{
 		BudgetItemId:      bpItem.Id,
+		BudgetPlanId:      bpItem.PlanId,
 		WeekNumber:        weekNumber,
 		Name:              bpItem.Name,
 		WeeklyDuration:    bpItem.WeeklyDuration,

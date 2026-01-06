@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/internal/utils"
@@ -23,7 +23,7 @@ type Dependencies struct {
 	EventBus *event_bus.EventBus
 
 	BudgetRepo        budget_plan.Repository
-	BudgetService     budget_plan.Service
+	BudgetPlanService budget_plan.Service
 	BudgetPlanHandler *budget_plan.Handler
 
 	WeeklyPlanRepo    weekly_plan.Repository
@@ -53,7 +53,7 @@ type Dependencies struct {
 }
 
 // BuildDependencies initializes and wires all application services and handlers.
-func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
+func BuildDependencies(db *pgxpool.Pool, cfg config.Application) *Dependencies {
 	deps := &Dependencies{}
 
 	deps.EventBus = event_bus.NewEventBus()
@@ -62,10 +62,10 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.UserHandler = user.NewHandler(deps.UserService)
 
 	deps.BudgetRepo = budget_plan.NewBudgetPlanRepo(db)
-	deps.BudgetService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)
-	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetService)
+	deps.BudgetPlanService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)
+	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetPlanService)
 	deps.WeeklyPlanRepo = weekly_plan.NewRepo(db)
-	deps.WeeklyPlanService = weekly_plan.NewService(deps.WeeklyPlanRepo, deps.BudgetService, deps.EventBus)
+	deps.WeeklyPlanService = weekly_plan.NewService(deps.WeeklyPlanRepo, deps.BudgetPlanService, deps.EventBus)
 	deps.WeeklyPlanHandler = weekly_plan.NewHandler(deps.WeeklyPlanService)
 
 	deps.KlokkuCalendarRepository = calendar.NewRepository(db)
@@ -79,7 +79,7 @@ func BuildDependencies(db *pgx.Conn, cfg config.Application) *Dependencies {
 	deps.CurrentEventHandler = current_event.NewEventHandler(deps.CurrentEventService)
 
 	deps.Clock = &utils.SystemClock{}
-	deps.StatsService = stats.NewService(deps.CurrentEventService, deps.WeeklyPlanService, deps.CalendarProvider)
+	deps.StatsService = stats.NewService(deps.CurrentEventService, deps.WeeklyPlanService, deps.BudgetPlanService, deps.CalendarProvider)
 	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService)
 
 	deps.ClickUpAuth = clickup.NewClickUpAuth(db, deps.UserService, cfg)

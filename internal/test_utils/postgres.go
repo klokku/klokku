@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/database"
 	log "github.com/sirupsen/logrus"
@@ -41,7 +41,7 @@ func preparePostgresContainer() (*postgres.PostgresContainer, error) {
 }
 
 // TestWithDB set up a Postgre instance and applies all migrations
-func TestWithDB() (*postgres.PostgresContainer, func() *pgx.Conn) {
+func TestWithDB() (*postgres.PostgresContainer, func() *pgxpool.Pool) {
 	ctx := context.Background()
 
 	container, err := preparePostgresContainer()
@@ -76,7 +76,7 @@ func TestWithDB() (*postgres.PostgresContainer, func() *pgx.Conn) {
 		os.Exit(1)
 	}
 
-	return container, func() *pgx.Conn {
+	return container, func() *pgxpool.Pool {
 		db, err := database.Open(cfg)
 		if err != nil {
 			log.Fatalf("Failed to open database connection: %v", err)

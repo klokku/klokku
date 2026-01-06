@@ -28,7 +28,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.DeleteItem).Methods("DELETE")
 
 	// Weekly Plan item
-	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.GetItems).Queries("date", "{date}").Methods("GET")
+	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.GetPlan).Queries("date", "{date}").Methods("GET")
 	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.ResetWeek).Queries("date", "{date}").Methods("DELETE")
 	r.HandleFunc("/api/weeklyplan/item", deps.WeeklyPlanHandler.UpdateItem).Queries("date", "{date}").Methods("PUT")
 	r.HandleFunc("/api/weeklyplan/item/{itemId}", deps.WeeklyPlanHandler.ResetItem).Methods("DELETE")
@@ -39,7 +39,10 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/event/current", deps.CurrentEventHandler.GetCurrentEvent).Methods("GET")
 
 	// Stats
-	r.HandleFunc("/api/stats/weekly", deps.StatsHandler.GetStats).Queries("date", "{date}").Methods("GET")
+	r.HandleFunc("/api/stats/weekly", deps.StatsHandler.GetWeeklyStats).Queries("date", "{date}").Methods("GET")
+	r.HandleFunc("/api/stats/item-history", deps.StatsHandler.GetPlanItemByWeekHistoryStats).
+		Methods("GET").
+		Queries("from", "{from}", "to", "{to}", "budgetItemId", "{budgetItemId}")
 
 	// User management
 	r.HandleFunc("/api/user/current", deps.UserHandler.CurrentUser).Methods("GET")
@@ -69,7 +72,8 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/integrations/clickup/space", deps.ClickUpHandler.ListSpaces).Queries("workspaceId", "{workspaceId}").Methods("GET")
 	r.HandleFunc("/api/integrations/clickup/tag", deps.ClickUpHandler.ListTags).Queries("spaceId", "{spaceId}").Methods("GET")
 	r.HandleFunc("/api/integrations/clickup/folder", deps.ClickUpHandler.ListFolders).Queries("spaceId", "{spaceId}").Methods("GET")
-	r.HandleFunc("/api/integrations/clickup/configuration", deps.ClickUpHandler.GetConfiguration).Methods("GET")
-	r.HandleFunc("/api/integrations/clickup/configuration", deps.ClickUpHandler.StoreConfiguration).Methods("PUT")
+	r.HandleFunc("/api/integrations/clickup/configuration/{budgetPlanId}", deps.ClickUpHandler.GetConfiguration).Methods("GET")
+	r.HandleFunc("/api/integrations/clickup/configuration/{budgetPlanId}", deps.ClickUpHandler.StoreConfiguration).Methods("PUT")
+	r.HandleFunc("/api/integrations/clickup/configuration/{budgetPlanId}", deps.ClickUpHandler.DeleteBudgetPlanConfiguration).Methods("DELETE")
 	r.HandleFunc("/api/integrations/clickup/tasks", deps.ClickUpHandler.GetTasks).Queries("budgetItemId", "{budgetItemId}").Methods("GET")
 }

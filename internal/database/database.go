@@ -12,13 +12,13 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/config"
 )
 
 // Open opens a Postgres database
-func Open(cfg config.Database) (*pgx.Conn, error) {
+func Open(cfg config.Database) (*pgxpool.Pool, error) {
 	ctx := context.Background()
 
 	// Escape single quotes in password for PostgreSQL connection string
@@ -26,16 +26,25 @@ func Open(cfg config.Database) (*pgx.Conn, error) {
 
 	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password='%s' dbname=%s sslmode=disable options='-c search_path=%s'", cfg.Host,
 		cfg.Port, cfg.User, escapedPassword, cfg.Name, cfg.Schema)
-	conn, err := pgx.Connect(ctx, psqlInfo)
+	poolConfig, err := pgxpool.ParseConfig(psqlInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database config: %w", err)
+	}
+
+	// Optional: Configure pool settings for better performance
+	poolConfig.MaxConns = 25
+	poolConfig.MinConns = 5
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	err = conn.Ping(ctx)
+	err = pool.Ping(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return conn, nil
+	return pool, nil
 }
 
 // Migrate runs database migrations using golang-migrate against the configured DB.

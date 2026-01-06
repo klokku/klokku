@@ -10,6 +10,7 @@ import (
 type WeeklyPlanItem struct {
 	Id           int
 	BudgetItemId int
+	BudgetPlanId int
 	WeekNumber   WeekNumber
 	Name         string // copy - as long as BudgetItem exist, updated with value from there
 	// WeeklyDuration represents the total time allocated weekly for a budget, specified as a duration.

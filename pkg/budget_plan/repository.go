@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,7 +17,7 @@ var ErrDeletingCurrentPlan = errors.New("cannot delete current plan")
 var ErrBudgetPlanItemNotFound = errors.New("budget plan item not found")
 
 type Repository interface {
-	StoreItem(ctx context.Context, userId int, budget BudgetItem) (int, error)
+	StoreItem(ctx context.Context, userId int, budget BudgetItem) (int, int, error)
 	GetPlan(ctx context.Context, userId int, planId int) (BudgetPlan, error)
 	GetCurrentPlan(ctx context.Context, userId int) (BudgetPlan, error)
 	ListPlans(ctx context.Context, userId int) ([]BudgetPlan, error)
@@ -26,19 +27,17 @@ type Repository interface {
 	GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error)
 	UpdateItem(ctx context.Context, userId int, item BudgetItem) (BudgetItem, error)
 	UpdateItemPosition(ctx context.Context, userId int, item BudgetItem) (bool, error)
-	FindMaxPlanItemPosition(ctx context.Context, planId int, userId int) (int, error)
 	DeleteItem(ctx context.Context, userId int, itemId int) (bool, error)
 }
 
 type RepositoryImpl struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
-func NewBudgetPlanRepo(db *pgx.Conn) *RepositoryImpl {
+func NewBudgetPlanRepo(db *pgxpool.Pool) *RepositoryImpl {
 	return &RepositoryImpl{db: db}
 }
-
-func (bi RepositoryImpl) StoreItem(ctx context.Context, userId int, budget BudgetItem) (int, error) {
+func (r *RepositoryImpl) StoreItem(ctx context.Context, userId int, budget BudgetItem) (int, int, error) {
 
 	query := `INSERT INTO budget_item (
                     budget_plan_id,
@@ -49,31 +48,33 @@ func (bi RepositoryImpl) StoreItem(ctx context.Context, userId int, budget Budge
                     color,
                     position, 
                     user_id
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`
+				) VALUES ($1, $2, $3, $4, $5, $6, 
+				          (SELECT COALESCE(MAX(position), 0) + 100 FROM budget_item WHERE budget_plan_id = $1 AND user_id = $7), 
+				          $7) RETURNING id, position`
 
 	var lastInsertID int
-	err := bi.db.QueryRow(ctx, query,
+	var assignedPosition int
+	err := r.db.QueryRow(ctx, query,
 		budget.PlanId,
 		budget.Name,
 		budget.WeeklyDuration.Milliseconds()/1000,
 		budget.WeeklyOccurrences,
 		budget.Icon,
 		budget.Color,
-		budget.Position,
 		userId,
-	).Scan(&lastInsertID)
+	).Scan(&lastInsertID, &assignedPosition)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
-		return 0, err
+		return 0, 0, err
 	}
 
-	return lastInsertID, nil
+	return lastInsertID, assignedPosition, nil
 }
 
-func (bi RepositoryImpl) GetPlan(ctx context.Context, userId int, planId int) (BudgetPlan, error) {
+func (r *RepositoryImpl) GetPlan(ctx context.Context, userId int, planId int) (BudgetPlan, error) {
 	// Get a Tx for making transaction requests.
-	tx, err := bi.db.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
@@ -167,7 +168,7 @@ func (bi RepositoryImpl) GetPlan(ctx context.Context, userId int, planId int) (B
 		return BudgetPlan{}, ErrPlanNotFound
 	}
 
-	currentPlanId, err := bi.getCurrentPlanId(ctx, tx, userId)
+	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
@@ -181,33 +182,33 @@ func (bi RepositoryImpl) GetPlan(ctx context.Context, userId int, planId int) (B
 	return plan, nil
 }
 
-func (bi RepositoryImpl) GetCurrentPlan(ctx context.Context, userId int) (BudgetPlan, error) {
+func (r *RepositoryImpl) GetCurrentPlan(ctx context.Context, userId int) (BudgetPlan, error) {
 	// Get a Tx for making transaction requests.
-	tx, err := bi.db.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
 	defer tx.Rollback(ctx)
 
-	currentPlanId, err := bi.getCurrentPlanId(ctx, tx, userId)
+	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
 	if currentPlanId == 0 {
 		return BudgetPlan{}, ErrPlanNotFound
 	}
-	return bi.GetPlan(ctx, userId, currentPlanId)
+	return r.GetPlan(ctx, userId, currentPlanId)
 }
 
-func (bi RepositoryImpl) ListPlans(ctx context.Context, userId int) ([]BudgetPlan, error) {
+func (r *RepositoryImpl) ListPlans(ctx context.Context, userId int) ([]BudgetPlan, error) {
 	// Get a Tx for making transaction requests.
-	tx, err := bi.db.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	currentPlanId, err := bi.getCurrentPlanId(ctx, tx, userId)
+	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {
 		return nil, err
 	}
@@ -239,15 +240,15 @@ func (bi RepositoryImpl) ListPlans(ctx context.Context, userId int) ([]BudgetPla
 	return plans, nil
 }
 
-func (bi RepositoryImpl) CreatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error) {
+func (r *RepositoryImpl) CreatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error) {
 	// Get a Tx for making transaction requests.
-	tx, err := bi.db.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
 	defer tx.Rollback(ctx)
 
-	plansCount, err := bi.countPlans(ctx, tx, userId)
+	plansCount, err := r.countPlans(ctx, tx, userId)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
@@ -264,7 +265,7 @@ func (bi RepositoryImpl) CreatePlan(ctx context.Context, userId int, plan Budget
 		return BudgetPlan{}, err
 	}
 	if plan.IsCurrent {
-		ok, err := bi.setCurrentPlan(ctx, tx, userId, planId)
+		ok, err := r.setCurrentPlan(ctx, tx, userId, planId)
 		if err != nil {
 			err := fmt.Errorf("could not execute query: %w", err)
 			log.Error(err)
@@ -281,9 +282,9 @@ func (bi RepositoryImpl) CreatePlan(ctx context.Context, userId int, plan Budget
 	return BudgetPlan{Id: planId, Name: plan.Name}, nil
 }
 
-func (bi RepositoryImpl) UpdatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error) {
+func (r *RepositoryImpl) UpdatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error) {
 	// Get a Tx for making transaction requests.
-	tx, err := bi.db.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return BudgetPlan{}, err
 	}
@@ -302,7 +303,7 @@ func (bi RepositoryImpl) UpdatePlan(ctx context.Context, userId int, plan Budget
 	}
 
 	if plan.IsCurrent {
-		ok, err := bi.setCurrentPlan(ctx, tx, userId, plan.Id)
+		ok, err := r.setCurrentPlan(ctx, tx, userId, plan.Id)
 		if err != nil {
 			err := fmt.Errorf("could not execute query: %v", err)
 			log.Error(err)
@@ -319,7 +320,7 @@ func (bi RepositoryImpl) UpdatePlan(ctx context.Context, userId int, plan Budget
 	return plan, nil
 }
 
-func (bi RepositoryImpl) setCurrentPlan(ctx context.Context, tx pgx.Tx, userId int, planId int) (bool, error) {
+func (r *RepositoryImpl) setCurrentPlan(ctx context.Context, tx pgx.Tx, userId int, planId int) (bool, error) {
 	query := `INSERT INTO 
 					budget_plan_current (budget_plan_id, user_id) VALUES ($1, $2) 
 					ON CONFLICT (user_id) DO UPDATE SET budget_plan_id = EXCLUDED.budget_plan_id`
@@ -332,15 +333,15 @@ func (bi RepositoryImpl) setCurrentPlan(ctx context.Context, tx pgx.Tx, userId i
 	return true, nil
 }
 
-func (bi RepositoryImpl) DeletePlan(ctx context.Context, userId int, planId int) (bool, error) {
+func (r *RepositoryImpl) DeletePlan(ctx context.Context, userId int, planId int) (bool, error) {
 	// Get a Tx for making transaction requests.
-	tx, err := bi.db.Begin(ctx)
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
 
-	currentPlanId, err := bi.getCurrentPlanId(ctx, tx, userId)
+	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {
 		return false, err
 	}
@@ -362,7 +363,7 @@ func (bi RepositoryImpl) DeletePlan(ctx context.Context, userId int, planId int)
 	return rowsAffected == 1, nil
 }
 
-func (bi RepositoryImpl) GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error) {
+func (r *RepositoryImpl) GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error) {
 	query := `SELECT 
     			item.budget_plan_id, 
     			item.name, 
@@ -384,7 +385,7 @@ func (bi RepositoryImpl) GetItem(ctx context.Context, userId int, itemId int) (B
 		itemPosition      int
 	)
 
-	err := bi.db.QueryRow(ctx, query, itemId, userId).
+	err := r.db.QueryRow(ctx, query, itemId, userId).
 		Scan(
 			&itemPlanId,
 			&itemName,
@@ -422,9 +423,9 @@ func (bi RepositoryImpl) GetItem(ctx context.Context, userId int, itemId int) (B
 	return item, nil
 }
 
-func (bi RepositoryImpl) UpdateItemPosition(ctx context.Context, userId int, budget BudgetItem) (bool, error) {
+func (r *RepositoryImpl) UpdateItemPosition(ctx context.Context, userId int, budget BudgetItem) (bool, error) {
 	query := "UPDATE budget_item SET position = $1 WHERE id = $2 and user_id = $3"
-	result, err := bi.db.Exec(ctx, query, budget.Position, budget.Id, userId)
+	result, err := r.db.Exec(ctx, query, budget.Position, budget.Id, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
@@ -434,7 +435,7 @@ func (bi RepositoryImpl) UpdateItemPosition(ctx context.Context, userId int, bud
 	return rowsAffected == 1, nil
 }
 
-func (bi RepositoryImpl) UpdateItem(ctx context.Context, userId int, item BudgetItem) (BudgetItem, error) {
+func (r *RepositoryImpl) UpdateItem(ctx context.Context, userId int, item BudgetItem) (BudgetItem, error) {
 	query := `UPDATE budget_item SET 
                   name = $1, 
                   weekly_duration_sec = $2, 
@@ -454,7 +455,7 @@ func (bi RepositoryImpl) UpdateItem(ctx context.Context, userId int, item Budget
 		itemPosition      int
 	)
 
-	err := bi.db.QueryRow(ctx, query,
+	err := r.db.QueryRow(ctx, query,
 		item.Name,
 		item.WeeklyDuration.Milliseconds()/1000,
 		item.WeeklyOccurrences,
@@ -490,9 +491,9 @@ func (bi RepositoryImpl) UpdateItem(ctx context.Context, userId int, item Budget
 	return updatedItem, nil
 }
 
-func (bi RepositoryImpl) DeleteItem(ctx context.Context, userId int, itemId int) (bool, error) {
+func (r *RepositoryImpl) DeleteItem(ctx context.Context, userId int, itemId int) (bool, error) {
 	query := "DELETE FROM budget_item WHERE id = $1 and user_id = $2"
-	result, err := bi.db.Exec(ctx, query, itemId, userId)
+	result, err := r.db.Exec(ctx, query, itemId, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
@@ -502,27 +503,7 @@ func (bi RepositoryImpl) DeleteItem(ctx context.Context, userId int, itemId int)
 	return rowsAffected == 1, nil
 }
 
-func (bi RepositoryImpl) FindMaxPlanItemPosition(ctx context.Context, planId int, userId int) (int, error) {
-	query := "SELECT MAX(position) FROM budget_item WHERE budget_item.budget_plan_id = $1 AND user_id = $2"
-	var maxPosition sql.NullInt64
-	err := bi.db.QueryRow(ctx, query, planId, userId).Scan(&maxPosition)
-	if err != nil {
-		err := fmt.Errorf("could not find max position: %w", err)
-		log.Error(err)
-		return 0, err
-	}
-
-	if !maxPosition.Valid {
-		log.Debugf(
-			"could not find max position for user %d, returning 0",
-			userId)
-		return 0, nil
-	}
-
-	return int(maxPosition.Int64), nil
-}
-
-func (bi RepositoryImpl) getCurrentPlanId(ctx context.Context, tx pgx.Tx, userId int) (int, error) {
+func (r *RepositoryImpl) getCurrentPlanId(ctx context.Context, tx pgx.Tx, userId int) (int, error) {
 	query := "SELECT budget_plan_current.budget_plan_id FROM budget_plan_current WHERE budget_plan_current.user_id = $1"
 	var planId sql.NullInt64
 	err := tx.QueryRow(ctx, query, userId).Scan(&planId)
@@ -538,7 +519,7 @@ func (bi RepositoryImpl) getCurrentPlanId(ctx context.Context, tx pgx.Tx, userId
 	return int(planId.Int64), nil
 }
 
-func (bi RepositoryImpl) countPlans(ctx context.Context, tx pgx.Tx, userId int) (int, error) {
+func (r *RepositoryImpl) countPlans(ctx context.Context, tx pgx.Tx, userId int) (int, error) {
 	query := "SELECT COUNT(*) FROM budget_plan WHERE user_id = $1"
 	var count int
 	err := tx.QueryRow(ctx, query, userId).Scan(&count)

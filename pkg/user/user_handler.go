@@ -17,6 +17,7 @@ type UserDTO struct {
 	Uid         string      `json:"uid"`
 	Username    string      `json:"username"`
 	DisplayName string      `json:"displayName"`
+	PhotoUrl    string      `json:"photoUrl"`
 	Settings    SettingsDTO `json:"settings"`
 }
 
@@ -436,6 +437,7 @@ func userToDTO(user *User) UserDTO {
 		Uid:         user.Uid,
 		Username:    user.Username,
 		DisplayName: user.DisplayName,
+		PhotoUrl:    user.PhotoUrl,
 		Settings:    settingsToDTO(user.Settings),
 	}
 }

@@ -17,7 +17,7 @@ type Service interface {
 	UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
 	DeletePlan(ctx context.Context, planId int) (bool, error)
 	GetItem(ctx context.Context, id int) (BudgetItem, error)
-	CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error)
+	CreateItem(ctx context.Context, item BudgetItem) (BudgetItem, error)
 	MoveItemAfter(ctx context.Context, planId, itemId, precedingId int) (bool, error)
 	UpdateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error)
 	DeleteItem(ctx context.Context, id int) (bool, error)
@@ -92,24 +92,19 @@ func (s *ServiceImpl) GetItem(ctx context.Context, id int) (BudgetItem, error) {
 	return s.repo.GetItem(ctx, userId, id)
 }
 
-func (s *ServiceImpl) CreateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {
+func (s *ServiceImpl) CreateItem(ctx context.Context, item BudgetItem) (BudgetItem, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return BudgetItem{}, fmt.Errorf("failed to get current user: %w", err)
 	}
-	maxPosition, err := s.repo.FindMaxPlanItemPosition(ctx, userId, budget.PlanId)
+
+	id, position, err := s.repo.StoreItem(ctx, userId, item)
 	if err != nil {
 		return BudgetItem{}, err
 	}
-	budget.Position = maxPosition + 100
-
-	id, err := s.repo.StoreItem(ctx, userId, budget)
-	if err != nil {
-		return BudgetItem{}, err
-	}
-	budget.Id = id
-
-	return budget, nil
+	item.Id = id
+	item.Position = position
+	return item, nil
 }
 
 func (s *ServiceImpl) UpdateItem(ctx context.Context, budget BudgetItem) (BudgetItem, error) {

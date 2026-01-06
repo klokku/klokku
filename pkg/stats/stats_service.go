@@ -2,9 +2,12 @@ package stats
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/klokku/klokku/internal/utils"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/user"
@@ -12,13 +15,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var ErrPlanItemNotFound = fmt.Errorf("plan item not found")
+var ErrNoStatsFound = fmt.Errorf("no stats found")
+
 type StatsService interface {
-	GetStats(ctx context.Context, weekTime time.Time) (StatsSummary, error)
+	GetWeeklyStats(ctx context.Context, weekTime time.Time) (WeeklyStatsSummary, error)
+	GetPlanItemByWeekHistoryStats(
+		ctx context.Context,
+		from time.Time,
+		to time.Time,
+		budgetItemId int,
+	) (PlanItemHistoryStats, error)
 }
 
 type StatsServiceImpl struct {
 	currentEventProvider currentEventProvider
 	weeklyPlanService    weeklyPlanItemsReader
+	budgetPlanService    budgetPlanReader
 	calendar             calendarEventsReader
 	clock                utils.Clock
 }
@@ -31,6 +44,11 @@ type weeklyPlanItemsReader interface {
 	GetItemsForWeek(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error)
 }
 
+type budgetPlanReader interface {
+	GetPlan(ctx context.Context, planId int) (budget_plan.BudgetPlan, error)
+	GetItem(ctx context.Context, id int) (budget_plan.BudgetItem, error)
+}
+
 type calendarEventsReader interface {
 	GetEvents(ctx context.Context, from time.Time, to time.Time) ([]calendar.Event, error)
 }
@@ -38,34 +56,60 @@ type calendarEventsReader interface {
 func NewService(
 	currentEventProvider currentEventProvider,
 	weeklyPlanService weeklyPlanItemsReader,
+	budgetPlanService budgetPlanReader,
 	calendar calendarEventsReader,
 ) StatsService {
 	return &StatsServiceImpl{
 		currentEventProvider: currentEventProvider,
 		weeklyPlanService:    weeklyPlanService,
+		budgetPlanService:    budgetPlanService,
 		calendar:             calendar,
 		clock:                &utils.SystemClock{},
 	}
 }
 
-func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (StatsSummary, error) {
+func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Time) (WeeklyStatsSummary, error) {
 	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
-		return StatsSummary{}, err
+		return WeeklyStatsSummary{}, err
 	}
 
 	// Currently supports only weekly stats. `weekTime` is used to find out which week.
 	from, to := weekTimeRange(weekTime, currentUser.Settings.WeekFirstDay)
 
-	planItems, err := s.weeklyPlanService.GetItemsForWeek(ctx, from)
+	weeklyItems, err := s.weeklyPlanService.GetItemsForWeek(ctx, from)
 	if err != nil {
-		return StatsSummary{}, err
+		if errors.Is(err, weekly_plan.ErrNoCurrentPlan) {
+			return WeeklyStatsSummary{}, ErrNoStatsFound
+		}
+		return WeeklyStatsSummary{}, err
 	}
-	log.Tracef("Plan items: %v", planItems)
+	log.Tracef("Plan items: %v", weeklyItems)
+
+	if len(weeklyItems) == 0 {
+		return WeeklyStatsSummary{}, nil
+	}
+
+	budgetPlan, err := s.budgetPlanService.GetPlan(ctx, weeklyItems[0].BudgetPlanId)
+	if err != nil {
+		return WeeklyStatsSummary{}, err
+	}
+
+	planItems := make([]PlanItem, 0, len(weeklyItems))
+	for _, item := range weeklyItems {
+		var budgetItem budget_plan.BudgetItem
+		for _, bi := range budgetPlan.Items {
+			if item.BudgetItemId == bi.Id {
+				budgetItem = bi
+				break
+			}
+		}
+		planItems = append(planItems, combinePlanItemData(item, budgetItem))
+	}
 
 	totalPlanned := time.Duration(0)
 	for _, item := range planItems {
-		totalPlanned += item.WeeklyDuration
+		totalPlanned += item.WeeklyItemDuration
 	}
 
 	currentEventBudgetItemId := 0
@@ -84,7 +128,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (St
 
 	calendarEvents, err := s.calendar.GetEvents(ctx, from, to)
 	if err != nil {
-		return StatsSummary{}, err
+		return WeeklyStatsSummary{}, err
 	}
 	eventsDurationPerDay := s.eventsDurationPerDay(calendarEvents)
 	eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
@@ -98,7 +142,14 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (St
 		}
 
 		dateBudgetDuration := eventsDurationPerDay[date]
-		budgetsStats := prepareStatsByBudget(planItems, dateBudgetDuration, currentEventBudgetItemId, todayCurrentEventTime)
+		budgetsStats := prepareStatsByBudget(
+			planItems,
+			dateBudgetDuration,
+			currentEventBudgetItemId,
+			todayCurrentEventTime,
+			date,
+			date.AddDate(0, 0, 1),
+		)
 		dateTotalTime := time.Duration(0)
 		for _, budgetStat := range budgetsStats {
 			dateTotalTime += budgetStat.Duration
@@ -113,6 +164,8 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (St
 		eventsDurationPerBudget,
 		currentEventBudgetItemId,
 		currentEventTime,
+		from,
+		to,
 	)
 
 	totalTime := time.Duration(0)
@@ -121,7 +174,7 @@ func (s *StatsServiceImpl) GetStats(ctx context.Context, weekTime time.Time) (St
 	}
 	totalTime += currentEventTime
 
-	return StatsSummary{
+	return WeeklyStatsSummary{
 		StartDate:      from,
 		EndDate:        to,
 		PerDay:         statsByDate,
@@ -159,10 +212,12 @@ func duration(event calendar.Event) time.Duration {
 }
 
 func prepareStatsByBudget(
-	planItems []weekly_plan.WeeklyPlanItem,
+	planItems []PlanItem,
 	durationByBudgetItemId map[int]time.Duration,
 	currentEventBudgetItemId int,
 	currentEventTime time.Duration,
+	startDate time.Time,
+	endDate time.Time,
 ) []PlanItemStats {
 
 	statsByBudget := make([]PlanItemStats, 0, len(planItems))
@@ -177,6 +232,8 @@ func prepareStatsByBudget(
 			PlanItem:  item,
 			Duration:  budgetDuration + budgetCurrentEventTime,
 			Remaining: calculateRemainingDuration(&item, budgetDuration) - budgetCurrentEventTime,
+			StartDate: startDate,
+			EndDate:   endDate,
 		}
 		statsByBudget = append(statsByBudget, budgetStats)
 	}
@@ -184,10 +241,10 @@ func prepareStatsByBudget(
 }
 
 func calculateRemainingDuration(
-	planItem *weekly_plan.WeeklyPlanItem,
+	planItem *PlanItem,
 	duration time.Duration,
 ) time.Duration {
-	return planItem.WeeklyDuration - duration
+	return planItem.WeeklyItemDuration - duration
 }
 
 func sameDays(date1, date2 time.Time, loc *time.Location) bool {
@@ -201,8 +258,92 @@ func weekTimeRange(date time.Time, weekStartDay time.Weekday) (time.Time, time.T
 		weekStartDay = time.Monday
 	}
 
+	// Truncate to the beginning of the day to avoid issues with time components during delta calculation
+	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+
 	delta := (int(date.Weekday()) - int(weekStartDay) + 7) % 7
 	weekStart := date.AddDate(0, 0, -delta)
 	weekEnd := weekStart.AddDate(0, 0, 7).Add(-time.Nanosecond)
 	return weekStart, weekEnd
+}
+
+func (s *StatsServiceImpl) GetPlanItemByWeekHistoryStats(
+	ctx context.Context,
+	from time.Time,
+	to time.Time,
+	budgetItemId int,
+) (PlanItemHistoryStats, error) {
+	currentUser, err := user.CurrentUser(ctx)
+	if err != nil {
+		return PlanItemHistoryStats{}, err
+	}
+
+	// Normalize "from" date to week start
+	weekStart, _ := weekTimeRange(from, currentUser.Settings.WeekFirstDay)
+	// Normalize "to" date to the end of the week
+	_, weekEnd := weekTimeRange(to, currentUser.Settings.WeekFirstDay)
+
+	var historyStats []PlanItemStats
+	for startDate := weekStart; !startDate.After(weekEnd); startDate = startDate.AddDate(0, 0, 7) {
+
+		items, err := s.weeklyPlanService.GetItemsForWeek(ctx, startDate)
+		if err != nil {
+			log.Errorf("Failed to get weekly plan items for date %v: %v", startDate, err)
+			return PlanItemHistoryStats{}, err
+		}
+		var weeklyItem weekly_plan.WeeklyPlanItem
+		for _, item := range items {
+			if item.BudgetItemId == budgetItemId {
+				weeklyItem = item
+				break
+			}
+		}
+		if weeklyItem.BudgetItemId == 0 {
+			return PlanItemHistoryStats{}, ErrPlanItemNotFound
+		}
+		budgetItem, err := s.budgetPlanService.GetItem(ctx, weeklyItem.BudgetItemId)
+		if err != nil {
+			return PlanItemHistoryStats{}, err
+		}
+
+		planItem := combinePlanItemData(weeklyItem, budgetItem)
+
+		endDate := startDate.AddDate(0, 0, 7).Add(-time.Nanosecond)
+		calendarEvents, err := s.calendar.GetEvents(ctx, startDate, endDate)
+		if err != nil {
+			return PlanItemHistoryStats{}, err
+		}
+
+		eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
+
+		historyStats = append(historyStats, PlanItemStats{
+			PlanItem:  planItem,
+			Duration:  eventsDurationPerBudget[budgetItemId],
+			Remaining: weeklyItem.WeeklyDuration - eventsDurationPerBudget[budgetItemId],
+			StartDate: startDate,
+			EndDate:   endDate,
+		})
+	}
+
+	return PlanItemHistoryStats{
+		StartDate:    weekStart,
+		EndDate:      weekEnd,
+		StatsPerWeek: historyStats,
+	}, nil
+}
+
+func combinePlanItemData(weeklyItem weekly_plan.WeeklyPlanItem, budgetItem budget_plan.BudgetItem) PlanItem {
+	return PlanItem{
+		BudgetPlanId:       budgetItem.PlanId,
+		BudgetItemId:       budgetItem.Id,
+		WeeklyItemId:       weeklyItem.Id,
+		Name:               weeklyItem.Name,
+		Icon:               weeklyItem.Icon,
+		Color:              weeklyItem.Color,
+		Position:           weeklyItem.Position,
+		WeeklyItemDuration: weeklyItem.WeeklyDuration,
+		BudgetItemDuration: budgetItem.WeeklyDuration,
+		WeeklyOccurrences:  weeklyItem.WeeklyOccurrences,
+		Notes:              weeklyItem.Notes,
+	}
 }

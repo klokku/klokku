@@ -2,8 +2,6 @@ package stats
 
 import (
 	"time"
-
-	"github.com/klokku/klokku/pkg/weekly_plan"
 )
 
 type DailyStats struct {
@@ -12,13 +10,35 @@ type DailyStats struct {
 	TotalTime        time.Duration
 }
 
-type PlanItemStats struct {
-	PlanItem  weekly_plan.WeeklyPlanItem
-	Duration  time.Duration
-	Remaining time.Duration
+type PlanItem struct {
+	BudgetPlanId       int
+	BudgetItemId       int
+	WeeklyItemId       int
+	Name               string
+	Icon               string
+	Color              string
+	Position           int
+	WeeklyItemDuration time.Duration
+	BudgetItemDuration time.Duration
+	WeeklyOccurrences  int
+	Notes              string
 }
 
-type StatsSummary struct {
+type PlanItemStats struct {
+	PlanItem  PlanItem
+	Duration  time.Duration
+	Remaining time.Duration
+	StartDate time.Time
+	EndDate   time.Time
+}
+
+type PlanItemHistoryStats struct {
+	StartDate    time.Time
+	EndDate      time.Time
+	StatsPerWeek []PlanItemStats
+}
+
+type WeeklyStatsSummary struct {
 	StartDate      time.Time
 	EndDate        time.Time
 	PerDay         []DailyStats

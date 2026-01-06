@@ -79,16 +79,24 @@ func NewStubBudgetRepo() *RepositoryStub {
 	return &RepositoryStub{nextId, plans, 0}
 }
 
-func (s *RepositoryStub) StoreItem(ctx context.Context, userId int, item BudgetItem) (int, error) {
+func (s *RepositoryStub) StoreItem(ctx context.Context, userId int, item BudgetItem) (int, int, error) {
 	planId := item.PlanId
 	if plan, exists := s.plans[planId]; exists {
 		s.nextId++
+		for _, it := range plan.Items {
+			if it.Position > item.Position {
+				item.Position = it.Position + 100
+			}
+		}
 		item.Id = s.nextId
+		if item.Position == 0 {
+			item.Position = 100
+		}
 		plan.Items = append(plan.Items, item)
 		s.plans[planId] = plan
-		return item.Id, nil
+		return item.Id, item.Position, nil
 	}
-	return 0, fmt.Errorf("plan with id %d does not exist", planId)
+	return 0, 0, fmt.Errorf("plan with id %d does not exist", planId)
 }
 
 func (s *RepositoryStub) GetPlan(ctx context.Context, userId int, planId int) (BudgetPlan, error) {
@@ -134,18 +142,6 @@ func (s *RepositoryStub) UpdateItemPosition(ctx context.Context, userId int, ite
 		return false, err
 	}
 	return updateItem.Position == item.Position, err
-}
-
-func (s *RepositoryStub) FindMaxPlanItemPosition(ctx context.Context, planId int, userId int) (int, error) {
-	maxPosition := 0
-	for _, plan := range s.plans {
-		for _, item := range plan.Items {
-			if item.Position > maxPosition {
-				maxPosition = item.Position
-			}
-		}
-	}
-	return maxPosition, nil
 }
 
 func (s *RepositoryStub) Cleanup() {

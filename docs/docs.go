@@ -763,11 +763,24 @@ const docTemplate = `{
                 "summary": "Start a new event",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Budget item id",
-                        "name": "budgetItemId",
-                        "in": "path",
-                        "required": true
+                        "description": "Event start details",
+                        "name": "event",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "budgetItemId": {
+                                    "type": "integer"
+                                },
+                                "name": {
+                                    "type": "string"
+                                },
+                                "weeklyDuration": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
                     }
                 ],
                 "responses": {
@@ -1095,6 +1108,40 @@ const docTemplate = `{
                 ]
             }
         },
+        "/api/integrations/clickup/configuration/{budgetPlanId}": {
+            "delete": {
+                "description": "Remove ClickUp integration configuration for a specific budget plan",
+                "tags": [
+                    "ClickUp"
+                ],
+                "summary": "Delete ClickUp configuration for budget plan",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Budget Plan ID",
+                        "name": "budgetPlanId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            }
+        },
         "/api/integrations/clickup/folder": {
             "get": {
                 "description": "Get all folders in a ClickUp space",
@@ -1325,6 +1372,66 @@ const docTemplate = `{
                 ]
             }
         },
+        "/api/stats/item-history": {
+            "get": {
+                "description": "Retrieve statistics for a specific budget item by week for a given period",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stats"
+                ],
+                "summary": "Get historical statistics for a specific budget item",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Start date in RFC3339 format",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date in RFC3339 format",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Budget Item ID",
+                        "name": "budgetItemId",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/stats.PlanItemHistoryStatsDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid parameters",
+                        "schema": {
+                            "$ref": "#/definitions/rest.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            }
+        },
         "/api/stats/weekly": {
             "get": {
                 "description": "Retrieve statistics for a specific week including time spent per plan item",
@@ -1348,7 +1455,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/stats.StatsSummaryDTO"
+                            "$ref": "#/definitions/stats.WeeklyStatsSummaryDTO"
                         }
                     },
                     "400": {
@@ -1764,10 +1871,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/weekly_plan.WeeklyPlanItemDTO"
-                            }
+                            "$ref": "#/definitions/weekly_plan.WeeklyPlanDTO"
                         }
                     },
                     "400": {
@@ -1811,10 +1915,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/weekly_plan.WeeklyPlanItemDTO"
-                            }
+                            "$ref": "#/definitions/weekly_plan.WeeklyPlanDTO"
                         }
                     },
                     "400": {
@@ -2033,7 +2134,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "clickUpSpaceId": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "clickUpTagName": {
                     "type": "string"
@@ -2047,7 +2148,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "folderId": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "mappings": {
                     "type": "array",
@@ -2055,11 +2156,14 @@ const docTemplate = `{
                         "$ref": "#/definitions/clickup.BudgetMappingDTO"
                     }
                 },
+                "onlyTasksWithPriority": {
+                    "type": "boolean"
+                },
                 "spaceId": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "workspaceId": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },
@@ -2171,21 +2275,82 @@ const docTemplate = `{
                 }
             }
         },
+        "stats.PlanItemDTO": {
+            "type": "object",
+            "properties": {
+                "budgetItemDuration": {
+                    "type": "integer"
+                },
+                "budgetItemId": {
+                    "type": "integer"
+                },
+                "budgetPlanId": {
+                    "type": "integer"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "weeklyItemDuration": {
+                    "type": "integer"
+                },
+                "weeklyItemId": {
+                    "type": "integer"
+                },
+                "weeklyOccurrences": {
+                    "type": "integer"
+                }
+            }
+        },
+        "stats.PlanItemHistoryStatsDTO": {
+            "type": "object",
+            "properties": {
+                "endDate": {
+                    "type": "string"
+                },
+                "startDate": {
+                    "type": "string"
+                },
+                "statsPerWeek": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/stats.PlanItemStatsDTO"
+                    }
+                }
+            }
+        },
         "stats.PlanItemStatsDTO": {
             "type": "object",
             "properties": {
                 "duration": {
                     "type": "integer"
                 },
+                "endDate": {
+                    "type": "string"
+                },
+                "planItem": {
+                    "$ref": "#/definitions/stats.PlanItemDTO"
+                },
                 "remaining": {
                     "type": "integer"
                 },
-                "weeklyPlanItem": {
-                    "$ref": "#/definitions/weekly_plan.WeeklyPlanItemDTO"
+                "startDate": {
+                    "type": "string"
                 }
             }
         },
-        "stats.StatsSummaryDTO": {
+        "stats.WeeklyStatsSummaryDTO": {
             "type": "object",
             "properties": {
                 "endDate": {
@@ -2259,6 +2424,9 @@ const docTemplate = `{
                 "displayName": {
                     "type": "string"
                 },
+                "photoUrl": {
+                    "type": "string"
+                },
                 "settings": {
                     "$ref": "#/definitions/user.SettingsDTO"
                 },
@@ -2267,6 +2435,20 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "weekly_plan.WeeklyPlanDTO": {
+            "type": "object",
+            "properties": {
+                "budgetPlanId": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/weekly_plan.WeeklyPlanItemDTO"
+                    }
                 }
             }
         },
