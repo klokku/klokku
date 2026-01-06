@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/test_utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +17,7 @@ import (
 )
 
 var pgContainer *postgres.PostgresContainer
-var openDb func() *pgx.Conn
+var openDb func() *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	pgContainer, openDb = test_utils.TestWithDB()
@@ -35,7 +35,7 @@ func setupTestRepository(t *testing.T) (context.Context, Repository, int) {
 	db := openDb()
 	repository := NewRepository(db)
 	t.Cleanup(func() {
-		db.Close(ctx)
+		db.Close()
 		err := pgContainer.Restore(ctx)
 		require.NoError(t, err)
 	})
