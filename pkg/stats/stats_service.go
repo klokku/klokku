@@ -134,6 +134,7 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 	eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
 
 	statsByDate := make([]DailyStats, 0, len(eventsDurationPerDay))
+	// from and to were already calculated using weekTimeRange which preserves the input location
 	for date := from; !date.After(to); date = date.AddDate(0, 0, 1) {
 		isToday := sameDays(s.clock.Now(), date, date.Location())
 		todayCurrentEventTime := time.Duration(0)
@@ -188,9 +189,10 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 func (s *StatsServiceImpl) eventsDurationPerDay(events []calendar.Event) map[time.Time]map[int]time.Duration {
 	eventsByDate := make(map[time.Time]map[int]time.Duration)
 	for _, e := range events {
-		loc := e.StartTime.Location()
-		year, month, day := e.StartTime.In(loc).Date()
-		date := time.Date(year, month, day, 0, 0, 0, 0, loc)
+		// Use the StartTime's location but normalize to midnight
+		t := e.StartTime
+		date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+
 		if eventsByDate[date] == nil {
 			eventsByDate[date] = make(map[int]time.Duration)
 		}
@@ -258,11 +260,14 @@ func weekTimeRange(date time.Time, weekStartDay time.Weekday) (time.Time, time.T
 		weekStartDay = time.Monday
 	}
 
-	// Truncate to the beginning of the day to avoid issues with time components during delta calculation
+	// Normalize to midnight in the original location
 	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 
 	delta := (int(date.Weekday()) - int(weekStartDay) + 7) % 7
 	weekStart := date.AddDate(0, 0, -delta)
+	// Ensure weekStart is also a clean midnight (redundant but safe)
+	weekStart = time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, weekStart.Location())
+
 	weekEnd := weekStart.AddDate(0, 0, 7).Add(-time.Nanosecond)
 	return weekStart, weekEnd
 }
