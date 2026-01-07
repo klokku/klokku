@@ -134,7 +134,6 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 	eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
 
 	statsByDate := make([]DailyStats, 0, len(eventsDurationPerDay))
-	// from and to were already calculated using weekTimeRange which preserves the input location
 	for date := from; !date.After(to); date = date.AddDate(0, 0, 1) {
 		isToday := sameDays(s.clock.Now(), date, date.Location())
 		todayCurrentEventTime := time.Duration(0)
@@ -142,7 +141,10 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 			todayCurrentEventTime = currentEventTime
 		}
 
-		dateBudgetDuration := eventsDurationPerDay[date]
+		// Normalize loop date to UTC midnight for map lookup
+		lookupDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+		dateBudgetDuration := eventsDurationPerDay[lookupDate]
+
 		budgetsStats := prepareStatsByBudget(
 			planItems,
 			dateBudgetDuration,
@@ -189,9 +191,9 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 func (s *StatsServiceImpl) eventsDurationPerDay(events []calendar.Event) map[time.Time]map[int]time.Duration {
 	eventsByDate := make(map[time.Time]map[int]time.Duration)
 	for _, e := range events {
-		// Use the StartTime's location but normalize to midnight
-		t := e.StartTime
-		date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+		// Use UTC midnight for the map key to avoid location pointer mismatches
+		t := e.StartTime.In(e.StartTime.Location())
+		date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 
 		if eventsByDate[date] == nil {
 			eventsByDate[date] = make(map[int]time.Duration)
