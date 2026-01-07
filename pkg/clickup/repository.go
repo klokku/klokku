@@ -33,7 +33,7 @@ func (r *RepositoryImpl) StoreConfiguration(ctx context.Context, userId, budgetP
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1. Upsert configuration and GET the ID (needed for mappings)
 	var configId int

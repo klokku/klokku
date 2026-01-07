@@ -83,7 +83,7 @@ func (s *ServiceImpl) GetItemsForWeek(ctx context.Context, date time.Time) ([]We
 		log.Errorf("failed to get weekly plan items for week %s: %v", weekNumber, err)
 		return nil, fmt.Errorf("failed to get weekly plan items: %w", err)
 	}
-	if items != nil && len(items) > 0 {
+	if len(items) > 0 {
 		return items, nil
 	}
 

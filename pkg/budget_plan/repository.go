@@ -78,7 +78,7 @@ func (r *RepositoryImpl) GetPlan(ctx context.Context, userId int, planId int) (B
 	if err != nil {
 		return BudgetPlan{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	query := `SELECT 
     			plan.name as plan_name,
@@ -188,7 +188,7 @@ func (r *RepositoryImpl) GetCurrentPlan(ctx context.Context, userId int) (Budget
 	if err != nil {
 		return BudgetPlan{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {
@@ -206,7 +206,7 @@ func (r *RepositoryImpl) ListPlans(ctx context.Context, userId int) ([]BudgetPla
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {
@@ -246,7 +246,7 @@ func (r *RepositoryImpl) CreatePlan(ctx context.Context, userId int, plan Budget
 	if err != nil {
 		return BudgetPlan{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	plansCount, err := r.countPlans(ctx, tx, userId)
 	if err != nil {
@@ -288,7 +288,7 @@ func (r *RepositoryImpl) UpdatePlan(ctx context.Context, userId int, plan Budget
 	if err != nil {
 		return BudgetPlan{}, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	query := `UPDATE budget_plan SET name = $1 WHERE id = $2 and user_id = $3`
 	result, err := tx.Exec(ctx, query, plan.Name, plan.Id, userId)
@@ -339,7 +339,7 @@ func (r *RepositoryImpl) DeletePlan(ctx context.Context, userId int, planId int)
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	currentPlanId, err := r.getCurrentPlanId(ctx, tx, userId)
 	if err != nil {

@@ -68,6 +68,7 @@ func TestRepositoryImpl_DeletePlan(t *testing.T) {
 		// given
 		ctx, repo, userId := setupTestRepository(t)
 		_, err := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Some Plan"})
+		require.NoError(t, err)
 		currentPlan, err := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Current Plan"})
 		require.NoError(t, err)
 		_, err = repo.UpdatePlan(ctx, userId, BudgetPlan{Id: currentPlan.Id, IsCurrent: true})
@@ -367,6 +368,7 @@ func TestRepositoryImpl_GetCurrentPlan(t *testing.T) {
 		// given
 		ctx, repo, userId := setupTestRepository(t)
 		_, err := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan 1"})
+		require.NoError(t, err)
 		currentPlan, err := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Test Plan 2"})
 		require.NoError(t, err)
 		_, err = repo.UpdatePlan(ctx, userId, BudgetPlan{Id: currentPlan.Id, Name: currentPlan.Name, IsCurrent: true})

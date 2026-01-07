@@ -490,9 +490,8 @@ func weeklyItem(itemPartial WeeklyPlanItem) WeeklyPlanItem {
 	if itemPartial.BudgetPlanId != 0 {
 		budgetPlanId = itemPartial.BudgetPlanId
 	}
-
 	date := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
-	date.Add(time.Duration(rand.Intn(365)) * 24 * time.Hour)
+	date = date.Add(time.Duration(rand.Intn(365)) * 24 * time.Hour)
 	weekNumber := WeekNumberFromDate(date, time.Monday)
 	if itemPartial.WeekNumber.Year != 0 {
 		weekNumber = itemPartial.WeekNumber

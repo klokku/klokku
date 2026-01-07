@@ -415,5 +415,4 @@ func (h *Handler) DeleteBudgetPlanConfiguration(w http.ResponseWriter, r *http.R
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-	return
 }

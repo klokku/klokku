@@ -104,7 +104,6 @@ func (handler *StatsHandler) GetWeeklyStats(w http.ResponseWriter, r *http.Reque
 	if err := json.NewEncoder(w).Encode(statsSummaryDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	return
 }
 
 func statsSummaryToDTO(stats *WeeklyStatsSummary) *WeeklyStatsSummaryDTO {
@@ -240,7 +239,6 @@ func (handler *StatsHandler) GetPlanItemByWeekHistoryStats(w http.ResponseWriter
 	if err := json.NewEncoder(w).Encode(statsDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	return
 }
 
 func planItemHistoryStatsToDTO(stats PlanItemHistoryStats) PlanItemHistoryStatsDTO {

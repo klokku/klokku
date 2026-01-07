@@ -98,7 +98,7 @@ func (r *repositoryImpl) GetItemsForWeek(ctx context.Context, userId int, weekNu
 	}
 	defer rows.Close()
 
-	var items []WeeklyPlanItem
+	items := make([]WeeklyPlanItem, 0, 10)
 
 	for rows.Next() {
 		var itemWeekNumberString string
