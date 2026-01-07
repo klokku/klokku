@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/config"
 	"github.com/klokku/klokku/internal/rest"
 	"github.com/klokku/klokku/pkg/user"
@@ -30,12 +32,12 @@ type clickUpAuthRedirect struct {
 }
 
 type ClickUpAuth struct {
-	db          *sql.DB
+	db          *pgxpool.Pool
 	userService user.Service
 	oauthConfig *oauth2.Config
 }
 
-func NewClickUpAuth(db *sql.DB, userService user.Service, cfg config.Application) *ClickUpAuth {
+func NewClickUpAuth(db *pgxpool.Pool, userService user.Service, cfg config.Application) *ClickUpAuth {
 	oauthConfig := &oauth2.Config{
 		ClientID:     cfg.ClickUp.ClientId,
 		ClientSecret: cfg.ClickUp.ClientSecret,
@@ -46,6 +48,16 @@ func NewClickUpAuth(db *sql.DB, userService user.Service, cfg config.Application
 	return &ClickUpAuth{db: db, userService: userService, oauthConfig: oauthConfig}
 }
 
+// OAuthLogin godoc
+// @Summary Initiate ClickUp OAuth login
+// @Description Start the OAuth flow to connect ClickUp account
+// @Tags ClickUp
+// @Produce json
+// @Param finalUrl query string false "URL to redirect to after authentication"
+// @Success 200 {object} object{redirectUrl=string} "OAuth redirect URL"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/auth/login [get]
+// @Security XUserId
 func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -57,7 +69,7 @@ func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	userId := currentUser.Id
 
-	_, err = g.db.Exec("DELETE FROM clickup_auth WHERE user_id = ?", userId)
+	_, err = g.db.Exec(r.Context(), "DELETE FROM clickup_auth WHERE user_id = $1", userId)
 	if err != nil {
 		log.Errorf("failed to delete old ClickUp auth row for user %d: %v", userId, err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -74,7 +86,7 @@ func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	finalUrl := r.URL.Query().Get("finalUrl")
 
 	// store nonce for the use in the DB
-	_, err = g.db.Exec("INSERT INTO clickup_auth (user_id, nonce) VALUES (?, ?)", userId, stateNonce)
+	_, err = g.db.Exec(r.Context(), "INSERT INTO clickup_auth (user_id, nonce) VALUES ($1, $2)", userId, stateNonce)
 	if err != nil {
 		log.Errorf("failed to store ClickUp auth nonce for user %d: %v", userId, err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -99,6 +111,14 @@ func (g *ClickUpAuth) OAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// OAuthCallback godoc
+// @Summary ClickUp OAuth callback
+// @Description Handle the OAuth callback from ClickUp
+// @Tags ClickUp
+// @Param code query string true "Authorization code"
+// @Param state query string true "State parameter"
+// @Success 302 "Redirect to finalUrl with success=true/false"
+// @Router /api/integrations/clickup/auth/callback [get]
 func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	code := r.FormValue("code")
@@ -123,7 +143,7 @@ func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 		expiryTimestamp = &timestamp
 	}
 
-	_, err = g.db.Exec("UPDATE clickup_auth SET access_token = ?, refresh_token = ?, expiry = ? WHERE nonce = ?",
+	_, err = g.db.Exec(r.Context(), "UPDATE clickup_auth SET access_token = $1, refresh_token = $2, expiry = $3 WHERE nonce = $4",
 		token.AccessToken, token.RefreshToken, expiryTimestamp, nonce)
 	if err != nil {
 		err := fmt.Errorf("unable to store ClickUp auth token for nonce: %v", err)
@@ -135,6 +155,16 @@ func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, finalUrl+"?success=true", http.StatusFound)
 }
 
+// IsAuthenticated godoc
+// @Summary Check ClickUp authentication status
+// @Description Check if the current user has authenticated with ClickUp
+// @Tags ClickUp
+// @Produce json
+// @Success 200 {string} string "true"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 "Not authenticated"
+// @Router /api/integrations/clickup/auth [get]
+// @Security XUserId
 func (g *ClickUpAuth) IsAuthenticated(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userId, err := user.CurrentId(r.Context())
@@ -143,10 +173,10 @@ func (g *ClickUpAuth) IsAuthenticated(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unable to retrieve current user", http.StatusInternalServerError)
 		return
 	}
-	row := g.db.QueryRowContext(r.Context(), "SELECT 1 FROM clickup_auth WHERE user_id = ?", userId)
+	row := g.db.QueryRow(r.Context(), "SELECT 1 FROM clickup_auth WHERE user_id = $1", userId)
 	var isAuthenticated int
 	err = row.Scan(&isAuthenticated)
-	if err != nil && errors.Is(err, sql.ErrNoRows) {
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -162,9 +192,9 @@ func (g *ClickUpAuth) IsAuthenticated(w http.ResponseWriter, r *http.Request) {
 func (g *ClickUpAuth) getToken(ctx context.Context, userId int) (*oauth2.Token, error) {
 	var token oauth2.Token
 	var expiryTimestamp sql.NullInt64
-	err := g.db.QueryRowContext(ctx, "SELECT access_token, refresh_token, expiry FROM clickup_auth WHERE user_id = ?", userId).
+	err := g.db.QueryRow(ctx, "SELECT access_token, refresh_token, expiry FROM clickup_auth WHERE user_id = $1", userId).
 		Scan(&token.AccessToken, &token.RefreshToken, &expiryTimestamp)
-	if err != nil && errors.Is(err, sql.ErrNoRows) {
+	if err != nil && errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("unable to retrieve ClickUp auth token: %v", err)

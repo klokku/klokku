@@ -1,0 +1,1597 @@
+basePath: /
+definitions:
+  budget_plan.BudgetPlanDTO:
+    properties:
+      id:
+        type: integer
+      isCurrent:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/budget_plan.ItemDTO'
+        type: array
+      name:
+        type: string
+    type: object
+  budget_plan.ItemDTO:
+    properties:
+      color:
+        type: string
+      icon:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      weeklyDuration:
+        type: integer
+      weeklyOccurrences:
+        type: integer
+    type: object
+  calendar.EventDTO:
+    properties:
+      budgetItemId:
+        type: integer
+      end:
+        type: string
+      start:
+        type: string
+      summary:
+        type: string
+      uid:
+        type: string
+    type: object
+  clickup.BudgetMappingDTO:
+    properties:
+      budgetItemId:
+        type: integer
+      clickUpSpaceId:
+        type: string
+      clickUpTagName:
+        type: string
+      position:
+        type: integer
+    type: object
+  clickup.ConfigurationDTO:
+    properties:
+      folderId:
+        type: string
+      mappings:
+        items:
+          $ref: '#/definitions/clickup.BudgetMappingDTO'
+        type: array
+      onlyTasksWithPriority:
+        type: boolean
+      spaceId:
+        type: string
+      workspaceId:
+        type: string
+    type: object
+  clickup.FolderDTO:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  clickup.SpaceDTO:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  clickup.TagDTO:
+    properties:
+      name:
+        type: string
+    type: object
+  clickup.TaskDTO:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      timeEstimateSec:
+        type: integer
+    type: object
+  clickup.WorkspaceDTO:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  current_event.CurrentEventDTO:
+    properties:
+      planItem:
+        $ref: '#/definitions/current_event.PlanItemDTO'
+      startTime:
+        type: string
+    type: object
+  current_event.PlanItemDTO:
+    properties:
+      budgetItemId:
+        type: integer
+      name:
+        type: string
+      weeklyDuration:
+        type: integer
+    type: object
+  rest.ErrorResponse:
+    properties:
+      details:
+        type: string
+      error:
+        type: string
+    type: object
+  stats.DailyStatsDTO:
+    properties:
+      date:
+        type: string
+      perPlanItem:
+        items:
+          $ref: '#/definitions/stats.PlanItemStatsDTO'
+        type: array
+      totalTime:
+        type: integer
+    type: object
+  stats.PlanItemDTO:
+    properties:
+      budgetItemDuration:
+        type: integer
+      budgetItemId:
+        type: integer
+      budgetPlanId:
+        type: integer
+      color:
+        type: string
+      icon:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      position:
+        type: integer
+      weeklyItemDuration:
+        type: integer
+      weeklyItemId:
+        type: integer
+      weeklyOccurrences:
+        type: integer
+    type: object
+  stats.PlanItemHistoryStatsDTO:
+    properties:
+      endDate:
+        type: string
+      startDate:
+        type: string
+      statsPerWeek:
+        items:
+          $ref: '#/definitions/stats.PlanItemStatsDTO'
+        type: array
+    type: object
+  stats.PlanItemStatsDTO:
+    properties:
+      duration:
+        type: integer
+      endDate:
+        type: string
+      planItem:
+        $ref: '#/definitions/stats.PlanItemDTO'
+      remaining:
+        type: integer
+      startDate:
+        type: string
+    type: object
+  stats.WeeklyStatsSummaryDTO:
+    properties:
+      endDate:
+        type: string
+      perDay:
+        items:
+          $ref: '#/definitions/stats.DailyStatsDTO'
+        type: array
+      perPlanItem:
+        items:
+          $ref: '#/definitions/stats.PlanItemStatsDTO'
+        type: array
+      startDate:
+        type: string
+      totalPlanned:
+        type: integer
+      totalRemaining:
+        type: integer
+      totalTime:
+        type: integer
+    type: object
+  user.EventCalendarType:
+    enum:
+    - klokku
+    - google
+    type: string
+    x-enum-varnames:
+    - KlokkuCalendar
+    - GoogleCalendar
+  user.GoogleCalendarSettingsDTO:
+    properties:
+      calendarId:
+        type: string
+    type: object
+  user.SettingsDTO:
+    properties:
+      eventCalendarType:
+        $ref: '#/definitions/user.EventCalendarType'
+      googleCalendar:
+        $ref: '#/definitions/user.GoogleCalendarSettingsDTO'
+      timezone:
+        type: string
+      weekStartDay:
+        type: string
+    type: object
+  user.UserDTO:
+    properties:
+      displayName:
+        type: string
+      photoUrl:
+        type: string
+      settings:
+        $ref: '#/definitions/user.SettingsDTO'
+      uid:
+        type: string
+      username:
+        type: string
+    type: object
+  weekly_plan.WeeklyPlanDTO:
+    properties:
+      budgetPlanId:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
+        type: array
+    type: object
+  weekly_plan.WeeklyPlanItemDTO:
+    properties:
+      budgetItemId:
+        type: integer
+      color:
+        type: string
+      icon:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      notes:
+        type: string
+      position:
+        type: integer
+      weeklyDuration:
+        type: integer
+      weeklyOccurrences:
+        type: integer
+    type: object
+host: localhost:8181
+info:
+  contact: {}
+  description: Time planning and tracking API
+  title: Klokku API
+  version: "0.9"
+paths:
+  /api/budgetplan:
+    get:
+      description: Get a list of all budget plans for the current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+            type: array
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: List all budget plans
+      tags:
+      - BudgetPlan
+    post:
+      consumes:
+      - application/json
+      description: Create a new budget plan with the provided details
+      parameters:
+      - description: Budget Plan
+        in: body
+        name: plan
+        required: true
+        schema:
+          $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Create a new budget plan
+      tags:
+      - BudgetPlan
+  /api/budgetplan/{planId}:
+    delete:
+      description: Delete a budget plan by ID
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Plan Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Delete a budget plan
+      tags:
+      - BudgetPlan
+    get:
+      description: Retrieve a specific budget plan with all its items
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Plan Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get a budget plan by ID
+      tags:
+      - BudgetPlan
+    put:
+      consumes:
+      - application/json
+      description: Update a budget plan by ID
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Budget Plan
+        in: body
+        name: plan
+        required: true
+        schema:
+          $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Plan Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Update an existing budget plan
+      tags:
+      - BudgetPlan
+  /api/budgetplan/{planId}/item:
+    post:
+      consumes:
+      - application/json
+      description: Register a new budget item within a specific budget plan
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Budget Item
+        in: body
+        name: item
+        required: true
+        schema:
+          $ref: '#/definitions/budget_plan.ItemDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/budget_plan.ItemDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Add a new budget item to a plan
+      tags:
+      - BudgetItem
+  /api/budgetplan/{planId}/item/{itemId}:
+    delete:
+      description: Remove a budget item from a plan
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Budget Item ID
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Item Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Delete a budget item
+      tags:
+      - BudgetItem
+    put:
+      consumes:
+      - application/json
+      description: Update an existing budget item within a plan
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Budget Item ID
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      - description: Budget Item
+        in: body
+        name: item
+        required: true
+        schema:
+          $ref: '#/definitions/budget_plan.ItemDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/budget_plan.ItemDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Update a budget item
+      tags:
+      - BudgetItem
+  /api/budgetplan/{planId}/item/{itemId}/position:
+    put:
+      consumes:
+      - application/json
+      description: Move a budget item to a specific position in the list
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Budget Item ID
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      - description: Position details
+        in: body
+        name: position
+        required: true
+        schema:
+          properties:
+            id:
+              type: integer
+            precedingId:
+              type: integer
+          type: object
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Item Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Set position of a budget item
+      tags:
+      - BudgetItem
+  /api/calendar/event:
+    get:
+      description: Retrieve calendar events within a date range
+      parameters:
+      - description: Start date in RFC3339 format
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: End date in RFC3339 format
+        in: query
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/calendar.EventDTO'
+            type: array
+        "400":
+          description: Invalid date format
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get calendar events
+      tags:
+      - Calendar
+    post:
+      consumes:
+      - application/json
+      description: Add a new event to the calendar
+      parameters:
+      - description: Calendar Event
+        in: body
+        name: event
+        required: true
+        schema:
+          $ref: '#/definitions/calendar.EventDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Array of created events (may include recurring instances)
+          schema:
+            items:
+              $ref: '#/definitions/calendar.EventDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Create a calendar event
+      tags:
+      - Calendar
+  /api/calendar/event/{eventUid}:
+    delete:
+      description: Remove a calendar event by UID
+      parameters:
+      - description: Event UID
+        in: path
+        name: eventUid
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Delete a calendar event
+      tags:
+      - Calendar
+    put:
+      consumes:
+      - application/json
+      description: Modify an existing calendar event
+      parameters:
+      - description: Event UID
+        in: path
+        name: eventUid
+        required: true
+        type: string
+      - description: Updated Calendar Event
+        in: body
+        name: event
+        required: true
+        schema:
+          $ref: '#/definitions/calendar.EventDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Array of modified events
+          schema:
+            items:
+              $ref: '#/definitions/calendar.EventDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Update a calendar event
+      tags:
+      - Calendar
+  /api/calendar/event/recent:
+    get:
+      description: Retrieve the most recent calendar events. Specify the number using
+        the 'last' query parameter (e.g., last=5)
+      parameters:
+      - default: 5
+        description: Number of recent events to retrieve
+        in: query
+        name: last
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/calendar.EventDTO'
+            type: array
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get recent calendar events
+      tags:
+      - Calendar
+  /api/event:
+    post:
+      consumes:
+      - application/json
+      description: Start a new event with the given budget item id
+      parameters:
+      - description: Event start details
+        in: body
+        name: event
+        required: true
+        schema:
+          properties:
+            budgetItemId:
+              type: integer
+            name:
+              type: string
+            weeklyDuration:
+              type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/current_event.CurrentEventDTO'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Start a new event
+      tags:
+      - CurrentEvent
+  /api/event/current:
+    get:
+      description: Retrieve the currently active event
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/current_event.CurrentEventDTO'
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: No current event
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get the current running event
+      tags:
+      - CurrentEvent
+  /api/event/current/start:
+    patch:
+      consumes:
+      - application/json
+      description: Update the start time of the currently running event
+      parameters:
+      - description: Start time in RFC3339 format
+        in: body
+        name: startTime
+        required: true
+        schema:
+          properties:
+            startTime:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/current_event.CurrentEventDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: No current event
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Modify current event start time
+      tags:
+      - CurrentEvent
+  /api/integrations/clickup/auth:
+    delete:
+      description: Disconnect and disable the ClickUp integration
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Disable ClickUp integration
+      tags:
+      - ClickUp
+    get:
+      description: Check if the current user has authenticated with ClickUp
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: "true"
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Not authenticated
+      security:
+      - XUserId: []
+      summary: Check ClickUp authentication status
+      tags:
+      - ClickUp
+  /api/integrations/clickup/auth/callback:
+    get:
+      description: Handle the OAuth callback from ClickUp
+      parameters:
+      - description: Authorization code
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: State parameter
+        in: query
+        name: state
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Redirect to finalUrl with success=true/false
+      summary: ClickUp OAuth callback
+      tags:
+      - ClickUp
+  /api/integrations/clickup/auth/login:
+    get:
+      description: Start the OAuth flow to connect ClickUp account
+      parameters:
+      - description: URL to redirect to after authentication
+        in: query
+        name: finalUrl
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OAuth redirect URL
+          schema:
+            properties:
+              redirectUrl:
+                type: string
+            type: object
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Initiate ClickUp OAuth login
+      tags:
+      - ClickUp
+  /api/integrations/clickup/configuration:
+    get:
+      description: Retrieve the current ClickUp integration configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/clickup.ConfigurationDTO'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get ClickUp configuration
+      tags:
+      - ClickUp
+    put:
+      consumes:
+      - application/json
+      description: Save ClickUp integration configuration and budget mappings
+      parameters:
+      - description: ClickUp Configuration
+        in: body
+        name: configuration
+        required: true
+        schema:
+          $ref: '#/definitions/clickup.ConfigurationDTO'
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Store ClickUp configuration
+      tags:
+      - ClickUp
+  /api/integrations/clickup/configuration/{budgetPlanId}:
+    delete:
+      description: Remove ClickUp integration configuration for a specific budget
+        plan
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: budgetPlanId
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Delete ClickUp configuration for budget plan
+      tags:
+      - ClickUp
+  /api/integrations/clickup/folder:
+    get:
+      description: Get all folders in a ClickUp space
+      parameters:
+      - description: Space ID
+        in: query
+        name: spaceId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clickup.FolderDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: List ClickUp folders
+      tags:
+      - ClickUp
+  /api/integrations/clickup/space:
+    get:
+      description: Get all spaces in a ClickUp workspace
+      parameters:
+      - description: Workspace ID
+        in: query
+        name: workspaceId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clickup.SpaceDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: List ClickUp spaces
+      tags:
+      - ClickUp
+  /api/integrations/clickup/tag:
+    get:
+      description: Get all tags in a ClickUp space
+      parameters:
+      - description: Space ID
+        in: query
+        name: spaceId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clickup.TagDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: List ClickUp tags
+      tags:
+      - ClickUp
+  /api/integrations/clickup/tasks:
+    get:
+      description: Retrieve ClickUp tasks for a specific budget item
+      parameters:
+      - description: Budget Item ID
+        in: query
+        name: budgetItemId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clickup.TaskDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get ClickUp tasks
+      tags:
+      - ClickUp
+  /api/integrations/clickup/workspace:
+    get:
+      description: Get all ClickUp workspaces the user has access to
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/clickup.WorkspaceDTO'
+            type: array
+        "403":
+          description: Unauthorized
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: List ClickUp workspaces
+      tags:
+      - ClickUp
+  /api/stats/item-history:
+    get:
+      description: Retrieve statistics for a specific budget item by week for a given
+        period
+      parameters:
+      - description: Start date in RFC3339 format
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: End date in RFC3339 format
+        in: query
+        name: to
+        required: true
+        type: string
+      - description: Budget Item ID
+        in: query
+        name: budgetItemId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/stats.PlanItemHistoryStatsDTO'
+        "400":
+          description: Invalid parameters
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get historical statistics for a specific budget item
+      tags:
+      - Stats
+  /api/stats/weekly:
+    get:
+      description: Retrieve statistics for a specific week including time spent per
+        plan item
+      parameters:
+      - description: Date in RFC3339 format (can be any day of the week)
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/stats.WeeklyStatsSummaryDTO'
+        "400":
+          description: Invalid date format
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get weekly statistics
+      tags:
+      - Stats
+  /api/user:
+    get:
+      description: Retrieve a list of all registered users
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/user.UserDTO'
+            type: array
+        "403":
+          description: User not found
+          schema:
+            type: string
+      summary: Get all users
+      tags:
+      - User
+    post:
+      consumes:
+      - application/json
+      description: Register a new user in the system
+      parameters:
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.UserDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      summary: Create a new user
+      tags:
+      - User
+  /api/user/{userUid}:
+    delete:
+      description: Delete a user by UID
+      parameters:
+      - description: User UID
+        in: path
+        name: userUid
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      summary: Delete a user
+      tags:
+      - User
+  /api/user/{userUid}/photo:
+    get:
+      description: Retrieve a user's profile photo. If userUid is provided, gets that
+        user's photo, otherwise gets current user's photo
+      parameters:
+      - description: User UID (optional)
+        in: path
+        name: userUid
+        type: string
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      summary: Get user photo
+      tags:
+      - User
+  /api/user/current:
+    get:
+      description: Retrieve the currently authenticated user's information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserDTO'
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: User Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get current user
+      tags:
+      - User
+    put:
+      consumes:
+      - application/json
+      description: Update the currently authenticated user's information
+      parameters:
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Update current user
+      tags:
+      - User
+  /api/user/current/photo:
+    delete:
+      description: Remove the current user's profile photo
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Delete user photo
+      tags:
+      - User
+    get:
+      description: Retrieve a user's profile photo. If userUid is provided, gets that
+        user's photo, otherwise gets current user's photo
+      produces:
+      - image/jpeg
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      summary: Get user photo
+      tags:
+      - User
+    put:
+      consumes:
+      - multipart/form-data
+      description: Upload a profile photo for the current user (max 3MB)
+      parameters:
+      - description: User photo
+        in: formData
+        name: photo
+        required: true
+        type: file
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Image too large or invalid
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Upload user photo
+      tags:
+      - User
+  /api/user/name-availability:
+    get:
+      description: Check if a username is available for registration
+      parameters:
+      - description: Username to check
+        in: query
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              available:
+                type: boolean
+            type: object
+        "400":
+          description: Username is required
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+      summary: Check username availability
+      tags:
+      - User
+  /api/weeklyplan:
+    delete:
+      description: Reset all weekly plan items to budget plan values for a specific
+        week
+      parameters:
+      - description: Date in RFC3339 format (can be any day of the week)
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/weekly_plan.WeeklyPlanDTO'
+        "400":
+          description: Invalid date format
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Reset entire week
+      tags:
+      - WeeklyPlan
+    get:
+      description: Retrieve all items for a specific week
+      parameters:
+      - description: Date in RFC3339 format (can be any day of the week)
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/weekly_plan.WeeklyPlanDTO'
+        "400":
+          description: Invalid date format
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get weekly plan items
+      tags:
+      - WeeklyPlan
+  /api/weeklyplan/item:
+    put:
+      consumes:
+      - application/json
+      description: Update the duration and notes for a weekly plan item
+      parameters:
+      - description: Date in RFC3339 format (can be any day of the week)
+        in: query
+        name: date
+        required: true
+        type: string
+      - description: Item update details
+        in: body
+        name: item
+        required: true
+        schema:
+          properties:
+            budgetItemId:
+              type: integer
+            id:
+              type: integer
+            notes:
+              type: string
+            weeklyDuration:
+              type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Item Not Found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Update a weekly plan item
+      tags:
+      - WeeklyPlan
+  /api/weeklyplan/item/{itemId}:
+    delete:
+      description: Reset a weekly plan item to its original budget plan values
+      parameters:
+      - description: Weekly Plan Item ID
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
+        "400":
+          description: Invalid itemId
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Reset a weekly plan item
+      tags:
+      - WeeklyPlan
+securityDefinitions:
+  XUserId:
+    description: User ID header required for authentication
+    in: header
+    name: X-User-Id
+    type: apiKey
+swagger: "2.0"

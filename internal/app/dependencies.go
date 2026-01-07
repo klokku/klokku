@@ -1,19 +1,18 @@
 package app
 
 import (
-	"database/sql"
-
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/klokku/klokku/internal/config"
+	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/internal/utils"
-	"github.com/klokku/klokku/pkg/budget"
-	"github.com/klokku/klokku/pkg/budget_override"
+	"github.com/klokku/klokku/pkg/budget_plan"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/calendar_provider"
 	"github.com/klokku/klokku/pkg/clickup"
-	"github.com/klokku/klokku/pkg/event"
-	"github.com/klokku/klokku/pkg/google"
+	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/stats"
 	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/weekly_plan"
 )
 
 // Dependencies holds all services and handlers for the application.
@@ -21,32 +20,28 @@ type Dependencies struct {
 	UserService user.Service
 	UserHandler *user.Handler
 
-	GoogleAuth    *google.GoogleAuth
-	GoogleService google.Service
-	GoogleHandler *google.Handler
+	EventBus *event_bus.EventBus
 
-	BudgetRepo            budget.BudgetRepo
-	BudgetService         *budget.BudgetServiceImpl
-	BudgetHandler         *budget.BudgetHandler
-	BudgetOverrideRepo    budget_override.BudgetOverrideRepo
-	BudgetOverrideService *budget_override.BudgetOverrideServiceImpl
-	BudgetOverrideHandler *budget_override.BudgetOverrideHandler
+	BudgetRepo        budget_plan.Repository
+	BudgetPlanService budget_plan.Service
+	BudgetPlanHandler *budget_plan.Handler
 
-	KlokkuCalendarRepository *calendar.RepositoryImpl
+	WeeklyPlanRepo    weekly_plan.Repository
+	WeeklyPlanService weekly_plan.Service
+	WeeklyPlanHandler *weekly_plan.Handler
+
+	KlokkuCalendarRepository calendar.Repository
 	KlokkuCalendarService    *calendar.Service
 	KlokkuCalendarHandler    *calendar.Handler
 
-	CalendarProvider        *calendar_provider.CalendarProvider
-	CalendarMigrator        *calendar_provider.EventsMigratorImpl
-	CalendarMigratorHandler *calendar_provider.MigratorHandler
+	CalendarProvider *calendar_provider.CalendarProvider
 
-	EventService event.EventService
-	EventHandler *event.EventHandler
+	CurrentEventRepo    current_event.Repository
+	CurrentEventService current_event.Service
+	CurrentEventHandler *current_event.EventHandler
 
-	EventStatsService event.EventStatsService
-	StatsService      *stats.StatsServiceImpl
-	CsvStatsRenderer  *stats.CsvStatsRendererImpl
-	StatsHandler      *stats.StatsHandler
+	StatsService stats.StatsService
+	StatsHandler *stats.StatsHandler
 
 	ClickUpAuth    *clickup.ClickUpAuth
 	ClickUpClient  clickup.Client
@@ -58,39 +53,34 @@ type Dependencies struct {
 }
 
 // BuildDependencies initializes and wires all application services and handlers.
-func BuildDependencies(db *sql.DB, cfg config.Application) *Dependencies {
+func BuildDependencies(db *pgxpool.Pool, cfg config.Application) *Dependencies {
 	deps := &Dependencies{}
+
+	deps.EventBus = event_bus.NewEventBus()
 
 	deps.UserService = user.NewUserService(user.NewUserRepo(db))
 	deps.UserHandler = user.NewHandler(deps.UserService)
 
-	deps.GoogleAuth = google.NewGoogleAuth(db, deps.UserService, cfg)
-	deps.GoogleService = google.NewService(deps.GoogleAuth)
-	deps.GoogleHandler = google.NewHandler(deps.GoogleService)
-
-	deps.BudgetRepo = budget.NewBudgetRepo(db)
-	deps.BudgetService = budget.NewBudgetServiceImpl(deps.BudgetRepo)
-	deps.BudgetHandler = budget.NewBudgetHandler(deps.BudgetService)
-	deps.BudgetOverrideRepo = budget_override.NewBudgetOverrideRepo(db)
-	deps.BudgetOverrideService = budget_override.NewBudgetOverrideService(deps.BudgetOverrideRepo)
-	deps.BudgetOverrideHandler = budget_override.NewBudgetOverrideHandler(deps.BudgetOverrideService)
+	deps.BudgetRepo = budget_plan.NewBudgetPlanRepo(db)
+	deps.BudgetPlanService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)
+	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetPlanService)
+	deps.WeeklyPlanRepo = weekly_plan.NewRepo(db)
+	deps.WeeklyPlanService = weekly_plan.NewService(deps.WeeklyPlanRepo, deps.BudgetPlanService, deps.EventBus)
+	deps.WeeklyPlanHandler = weekly_plan.NewHandler(deps.WeeklyPlanService)
 
 	deps.KlokkuCalendarRepository = calendar.NewRepository(db)
-	deps.KlokkuCalendarService = calendar.NewService(deps.KlokkuCalendarRepository)
-	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService, deps.BudgetService.GetAll)
+	deps.KlokkuCalendarService = calendar.NewService(deps.KlokkuCalendarRepository, deps.EventBus, deps.WeeklyPlanService.GetItemsForWeek)
+	deps.KlokkuCalendarHandler = calendar.NewHandler(deps.KlokkuCalendarService)
 
-	deps.CalendarProvider = calendar_provider.NewCalendarProvider(deps.UserService, deps.GoogleService, deps.KlokkuCalendarService)
-	deps.CalendarMigrator = calendar_provider.NewEventsMigratorImpl(deps.CalendarProvider)
-	deps.CalendarMigratorHandler = calendar_provider.NewMigratorHandler(deps.CalendarMigrator)
+	deps.CalendarProvider = calendar_provider.NewCalendarProvider(deps.UserService, deps.KlokkuCalendarService)
 
-	deps.EventService = event.NewEventService(event.NewEventRepo(db), deps.CalendarProvider, deps.UserService)
-	deps.EventHandler = event.NewEventHandler(deps.EventService)
+	deps.CurrentEventRepo = current_event.NewEventRepo(db)
+	deps.CurrentEventService = current_event.NewEventService(deps.CurrentEventRepo, deps.CalendarProvider)
+	deps.CurrentEventHandler = current_event.NewEventHandler(deps.CurrentEventService)
 
 	deps.Clock = &utils.SystemClock{}
-	deps.EventStatsService = event.NewEventStatsServiceImpl(deps.CalendarProvider, deps.Clock)
-	deps.StatsService = stats.NewStatsServiceImpl(deps.EventService, deps.EventStatsService, deps.BudgetRepo, deps.BudgetOverrideRepo)
-	deps.CsvStatsRenderer = stats.NewCsvStatsTransformer()
-	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService, deps.CsvStatsRenderer)
+	deps.StatsService = stats.NewService(deps.CurrentEventService, deps.WeeklyPlanService, deps.BudgetPlanService, deps.CalendarProvider)
+	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService)
 
 	deps.ClickUpAuth = clickup.NewClickUpAuth(db, deps.UserService, cfg)
 	deps.ClickUpClient = clickup.NewClient(deps.ClickUpAuth)

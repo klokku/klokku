@@ -35,7 +35,7 @@ func SetupMiddleware(r *mux.Router, deps *Dependencies, cfg config.Application) 
 					}
 				} else {
 					log.Debugf("user found: %s", u.Uid)
-					ctx = user.WithId(ctx, u.Id)
+					ctx = user.WithUser(ctx, u)
 				}
 			}
 			log.Debug("Propagated user ID header")

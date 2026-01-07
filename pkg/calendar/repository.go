@@ -2,38 +2,39 @@ package calendar
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	log "github.com/sirupsen/logrus"
 )
 
 type Repository interface {
 	WithTransaction(ctx context.Context, fn func(repo Repository) error) error
-	StoreEvent(ctx context.Context, userId int, event Event) (string, error)
+	StoreEvent(ctx context.Context, userId int, event Event) (Event, error)
 	GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error)
 	GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error)
-	UpdateEvent(ctx context.Context, userId int, event Event) error
+	UpdateEvent(ctx context.Context, userId int, event Event) (Event, error)
 	DeleteEvent(ctx context.Context, userId int, eventId string) error
 }
-type RepositoryImpl struct {
-	db *sql.DB
-	tx *sql.Tx
+type repositoryImpl struct {
+	db *pgxpool.Pool
+	tx pgx.Tx
 }
 
-func NewRepository(db *sql.DB) *RepositoryImpl {
-	return &RepositoryImpl{db: db, tx: nil}
+func NewRepository(db *pgxpool.Pool) Repository {
+	return &repositoryImpl{db: db, tx: nil}
 }
 
 // getQueryer returns the appropriate database interface for queries (either tx or db)
-func (r *RepositoryImpl) getQueryer() interface {
-	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+func (r *repositoryImpl) getQueryer() interface {
+	Exec(ctx context.Context, query string, args ...interface{}) (pgconn.CommandTag, error)
+	Query(ctx context.Context, query string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, query string, args ...interface{}) pgx.Row
 } {
 	if r.tx != nil {
 		return r.tx
@@ -41,74 +42,74 @@ func (r *RepositoryImpl) getQueryer() interface {
 	return r.db
 }
 
-func (r *RepositoryImpl) WithTransaction(ctx context.Context, fn func(repo Repository) error) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+func (r *repositoryImpl) WithTransaction(ctx context.Context, fn func(repo Repository) error) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() {
 		// The Rollback will be a no-op if the transaction was already committed
-		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
 			// Just log rollback errors
 			log.Errorf("rollback error: %v", rbErr)
 		}
 	}()
 
 	// Create a repository that uses the transaction
-	txRepo := &RepositoryImpl{db: r.db, tx: tx}
+	txRepo := &repositoryImpl{db: r.db, tx: tx}
 
 	if err := fn(txRepo); err != nil {
 		return err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil
 }
 
-func (r *RepositoryImpl) StoreEvent(ctx context.Context, userId int, event Event) (string, error) {
+func (r *repositoryImpl) StoreEvent(ctx context.Context, userId int, event Event) (Event, error) {
 	query := `INSERT INTO calendar_event (
                             uid,
                             summary,
                             start_time,
                             end_time,
-                            budget_id,
+                            budget_item_id,
                             user_id
-						) VALUES (?, ?, ?, ?, ?, ?)`
-
-	stmt, err := r.getQueryer().PrepareContext(ctx, query)
-	if err != nil {
-		err := fmt.Errorf("could not prepare query: %v", err)
-		log.Error(err)
-		return "", err
-	}
-	defer stmt.Close()
+						) VALUES ($1, $2, $3, $4, $5, $6) RETURNING uid, summary, start_time, end_time, budget_item_id`
 
 	uid := uuid.NewString()
-	_, err = stmt.ExecContext(ctx, uid, event.Summary, event.StartTime.UnixMilli(), event.EndTime.UnixMilli(), event.Metadata.BudgetId, userId)
+	var createdEvent Event
+	err := r.getQueryer().QueryRow(ctx, query,
+		uid,
+		event.Summary,
+		event.StartTime,
+		event.EndTime,
+		event.Metadata.BudgetItemId,
+		userId,
+	).Scan(&createdEvent.UID, &createdEvent.Summary, &createdEvent.StartTime, &createdEvent.EndTime, &createdEvent.Metadata.BudgetItemId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
-		return "", err
+		return Event{}, err
 	}
 
-	return uid, nil
+	return createdEvent, nil
 }
 
-func (r *RepositoryImpl) GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error) {
+func (r *repositoryImpl) GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error) {
 	// Return all events that overlap with the given period:
 	// 1. Events that start before the end of the period (start_time <= to)
 	// 2. AND end after the start of the period (end_time >= from)
-	query := `SELECT uid, summary, start_time, end_time, budget_id 
+	query := `SELECT uid, summary, start_time, end_time, budget_item_id 
               FROM calendar_event 
-              WHERE user_id = ? 
-                AND start_time <= ? 
-                AND end_time >= ?
+              WHERE user_id = $1 
+                AND start_time <= $2 
+                AND end_time >= $3
 			  ORDER BY start_time`
 
-	rows, err := r.getQueryer().QueryContext(ctx, query, userId, to.UnixMilli(), from.UnixMilli())
+	rows, err := r.getQueryer().Query(ctx, query, userId, to, from)
 	if err != nil {
 		err := fmt.Errorf("could not query calendar events: %w", err)
 		log.Error(err)
@@ -118,40 +119,28 @@ func (r *RepositoryImpl) GetEvents(ctx context.Context, userId int, from, to tim
 
 	events := make([]Event, 0, 10)
 	for rows.Next() {
-		var uid string
-		var summary string
-		var startTimeMillis int64
-		var endTimeMillis int64
-		var budgetId int
-		err := rows.Scan(&uid, &summary, &startTimeMillis, &endTimeMillis, &budgetId)
+		var event Event
+		err := rows.Scan(&event.UID, &event.Summary, &event.StartTime, &event.EndTime, &event.Metadata.BudgetItemId)
 		if err != nil {
 			err := fmt.Errorf("could not scan row: %w", err)
 			log.Error(err)
 			return nil, err
 		}
-		events = append(events, Event{
-			Summary:   summary,
-			StartTime: time.UnixMilli(startTimeMillis),
-			EndTime:   time.UnixMilli(endTimeMillis),
-			Metadata: EventMetadata{
-				BudgetId: budgetId,
-			},
-			UID: uid,
-		})
+		events = append(events, event)
 	}
 	return events, nil
 }
 
 // GetLastEvents retrieves the most recent calendar events for a specific user, limited by the specified number of records.
-func (r *RepositoryImpl) GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error) {
-	query := `SELECT uid, summary, start_time, end_time, budget_id
+func (r *repositoryImpl) GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error) {
+	query := `SELECT uid, summary, start_time, end_time, budget_item_id
 				FROM calendar_event 
-				WHERE user_id = ? AND
-				      end_time <= ?
+				WHERE user_id = $1 AND
+				      end_time <= $2
 				ORDER BY end_time DESC
-				LIMIT ?`
+				LIMIT $3`
 
-	rows, err := r.getQueryer().QueryContext(ctx, query, userId, time.Now().UnixMilli(), limit)
+	rows, err := r.getQueryer().Query(ctx, query, userId, time.Now(), limit)
 	if err != nil {
 		err := fmt.Errorf("could not query calendar events: %w", err)
 		log.Error(err)
@@ -159,65 +148,52 @@ func (r *RepositoryImpl) GetLastEvents(ctx context.Context, userId int, limit in
 	}
 	defer rows.Close()
 
-	events := make([]Event, 0, 10)
+	events := make([]Event, 0, limit)
 	for rows.Next() {
-		var uid string
-		var summary string
-		var startTimeMillis int64
-		var endTimeMillis int64
-		var budgetId int
-		err := rows.Scan(&uid, &summary, &startTimeMillis, &endTimeMillis, &budgetId)
+		var event Event
+		err := rows.Scan(&event.UID, &event.Summary, &event.StartTime, &event.EndTime, &event.Metadata.BudgetItemId)
 		if err != nil {
 			err := fmt.Errorf("could not scan row: %w", err)
 			log.Error(err)
 			return nil, err
 		}
-		events = append(events, Event{
-			Summary:   summary,
-			StartTime: time.UnixMilli(startTimeMillis),
-			EndTime:   time.UnixMilli(endTimeMillis),
-			Metadata: EventMetadata{
-				BudgetId: budgetId,
-			},
-			UID: uid,
-		})
+		events = append(events, event)
 	}
 	return events, nil
 }
 
-func (r *RepositoryImpl) UpdateEvent(ctx context.Context, userId int, event Event) error {
-	query := `UPDATE calendar_event SET summary = ?, start_time = ?, end_time = ?, budget_id = ? WHERE uid = ? AND user_id = ?`
-	stmt, err := r.getQueryer().PrepareContext(ctx, query)
-	if err != nil {
-		err := fmt.Errorf("could not prepare query: %v", err)
-		log.Error(err)
-		return err
-	}
-	defer stmt.Close()
-	_, err = stmt.ExecContext(ctx, event.Summary, event.StartTime.UnixMilli(), event.EndTime.UnixMilli(), event.Metadata.BudgetId, event.UID,
-		userId)
+func (r *repositoryImpl) UpdateEvent(ctx context.Context, userId int, event Event) (Event, error) {
+	query := `UPDATE calendar_event 
+				SET summary = $1, start_time = $2, end_time = $3, budget_item_id = $4 
+				WHERE uid = $5 AND user_id = $6
+				RETURNING uid, summary, start_time, end_time, budget_item_id`
+	var updatedEvent Event
+	err := r.getQueryer().QueryRow(ctx, query,
+		event.Summary,
+		event.StartTime,
+		event.EndTime,
+		event.Metadata.BudgetItemId,
+		event.UID,
+		userId).Scan(&updatedEvent.UID, &updatedEvent.Summary, &updatedEvent.StartTime, &updatedEvent.EndTime, &updatedEvent.Metadata.BudgetItemId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
-		return err
+		return Event{}, err
 	}
-	return nil
+	return updatedEvent, nil
 }
 
-func (r *RepositoryImpl) DeleteEvent(ctx context.Context, userId int, eventUid string) error {
-	query := `DELETE FROM calendar_event WHERE uid = ? AND user_id = ?`
-	stmt, err := r.getQueryer().PrepareContext(ctx, query)
-	if err != nil {
-		err := fmt.Errorf("could not prepare query: %v", err)
-		log.Error(err)
-		return err
-	}
-	defer stmt.Close()
-	_, err = stmt.ExecContext(ctx, eventUid, userId)
+func (r *repositoryImpl) DeleteEvent(ctx context.Context, userId int, eventUid string) error {
+	query := `DELETE FROM calendar_event WHERE uid = $1 AND user_id = $2`
+	result, err := r.getQueryer().Exec(ctx, query, eventUid, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
 		return err
+	}
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("no event found with uid %s for user %d", eventUid, userId)
 	}
 	return nil
 }

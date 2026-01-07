@@ -26,12 +26,12 @@ func NewApplication() (*Application, error) {
 	}
 
 	// DB + migrations
-	db, err := database.Open(cfg)
+	db, err := database.Open(cfg.Database)
 	if err != nil {
 		return nil, err
 	}
 	// db will be closed when server shuts down; defer not possible here, leave to process exit.
-	if err := database.Migrate(cfg); err != nil {
+	if err := database.Migrate(cfg.Database); err != nil {
 		return nil, err
 	}
 

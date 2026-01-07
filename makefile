@@ -12,6 +12,14 @@ cilint:
 	golangci-lint run
 .PHONY: cilint
 
+swagger:
+	swag init
+.PHONY: swagger
+
+serve-docs:
+	swag init && go run main.go
+.PHONY: serve-docs
+
 build:
 	go build -o klokku
 .PHONY: build

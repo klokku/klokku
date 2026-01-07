@@ -1,35 +1,44 @@
 package calendar
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/rest"
-	"github.com/klokku/klokku/pkg/budget"
+	log "github.com/sirupsen/logrus"
 )
 
 type Handler struct {
-	calendar        *Service
-	budgetsProvider BudgetsProviderFunc
+	calendar *Service
 }
-
-type BudgetsProviderFunc func(ctx context.Context, includeInactive bool) ([]budget.Budget, error)
 
 type EventDTO struct {
-	UID       string    `json:"uid"`
-	Summary   string    `json:"summary"`
-	StartTime time.Time `json:"start"`
-	EndTime   time.Time `json:"end"`
-	BudgetId  int       `json:"budgetId"`
+	UID          string    `json:"uid"`
+	Summary      string    `json:"summary"`
+	StartTime    time.Time `json:"start"`
+	EndTime      time.Time `json:"end"`
+	BudgetItemId int       `json:"budgetItemId"`
 }
 
-func NewHandler(s *Service, bp BudgetsProviderFunc) *Handler {
-	return &Handler{s, bp}
+func NewHandler(s *Service) *Handler {
+	return &Handler{s}
 }
 
+// GetEvents godoc
+// @Summary Get calendar events
+// @Description Retrieve calendar events within a date range
+// @Tags Calendar
+// @Produce json
+// @Param from query string true "Start date in RFC3339 format"
+// @Param to query string true "End date in RFC3339 format"
+// @Success 200 {array} EventDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid date format"
+// @Failure 403 {string} string "User not found"
+// @Router /api/calendar/event [get]
+// @Security XUserId
 func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	fromString := r.URL.Query().Get("from")
 	toString := r.URL.Query().Get("to")
@@ -68,12 +77,7 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	var dtos = make([]EventDTO, 0, len(events))
 	for _, e := range events {
-		dto, err := eventToDTO(e)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		dtos = append(dtos, dto)
+		dtos = append(dtos, eventToDTO(e))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -84,102 +88,91 @@ func (h *Handler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CreateEvent godoc
+// @Summary Create a calendar event
+// @Description Add a new event to the calendar
+// @Tags Calendar
+// @Accept json
+// @Produce json
+// @Param event body EventDTO true "Calendar Event"
+// @Success 201 {array} EventDTO "Array of created events (may include recurring instances)"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/calendar/event [post]
+// @Security XUserId
 func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	var eventDTO EventDTO
 	if err := json.NewDecoder(r.Body).Decode(&eventDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	event, err := dtoToEvent(eventDTO)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	budgets, err := h.budgetsProvider(r.Context(), false)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var budgetInfo *budget.Budget
-	for _, b := range budgets {
-		if b.ID == event.Metadata.BudgetId {
-			budgetInfo = &b
-			break
-		}
-	}
-	if budgetInfo == nil {
-		http.Error(w, "Invalid budget id", http.StatusBadRequest)
-		return
-	}
-	event.Summary = budgetInfo.Name
 
-	addedEvent, err := h.calendar.AddStickyEvent(r.Context(), event)
+	addedEvents, err := h.calendar.AddStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	addedEventDTO, err := eventToDTO(*addedEvent)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	var eventDTOs []EventDTO
+	for _, e := range addedEvents {
+		eventDTOs = append(eventDTOs, eventToDTO(e))
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(addedEventDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(eventDTOs); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
+// UpdateEvent godoc
+// @Summary Update a calendar event
+// @Description Modify an existing calendar event
+// @Tags Calendar
+// @Accept json
+// @Produce json
+// @Param eventUid path string true "Event UID"
+// @Param event body EventDTO true "Updated Calendar Event"
+// @Success 200 {array} EventDTO "Array of modified events"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/calendar/event/{eventUid} [put]
+// @Security XUserId
 func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	var eventDTO EventDTO
 	if err := json.NewDecoder(r.Body).Decode(&eventDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	event, err := dtoToEvent(eventDTO)
+
+	modifiedEvents, err := h.calendar.ModifyStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	var eventDTOs []EventDTO
+	for _, e := range modifiedEvents {
+		eventDTOs = append(eventDTOs, eventToDTO(e))
 	}
 
-	budgets, err := h.budgetsProvider(r.Context(), false)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var budgetInfo *budget.Budget
-	for _, b := range budgets {
-		if b.ID == event.Metadata.BudgetId {
-			budgetInfo = &b
-			break
-		}
-	}
-	if budgetInfo == nil {
-		http.Error(w, "Invalid budget id", http.StatusBadRequest)
-		return
-	}
-	event.Summary = budgetInfo.Name
-
-	modifiedEvent, err := h.calendar.ModifyStickyEvent(r.Context(), event)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	modifiedEventDTO, err := eventToDTO(*modifiedEvent)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(modifiedEventDTO); err != nil {
+	if err := json.NewEncoder(w).Encode(eventDTOs); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
+// DeleteEvent godoc
+// @Summary Delete a calendar event
+// @Description Remove a calendar event by UID
+// @Tags Calendar
+// @Param eventUid path string true "Event UID"
+// @Success 204 "No Content"
+// @Failure 403 {string} string "User not found"
+// @Router /api/calendar/event/{eventUid} [delete]
+// @Security XUserId
 func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -193,22 +186,62 @@ func (h *Handler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func eventToDTO(e Event) (EventDTO, error) {
+func eventToDTO(e Event) EventDTO {
 	return EventDTO{
-		UID:       e.UID,
-		Summary:   e.Summary,
-		StartTime: e.StartTime,
-		EndTime:   e.EndTime,
-		BudgetId:  e.Metadata.BudgetId,
-	}, nil
+		UID:          e.UID,
+		Summary:      e.Summary,
+		StartTime:    e.StartTime,
+		EndTime:      e.EndTime,
+		BudgetItemId: e.Metadata.BudgetItemId,
+	}
 }
 
-func dtoToEvent(e EventDTO) (Event, error) {
+func dtoToEvent(e EventDTO) Event {
 	return Event{
 		UID:       e.UID,
 		Summary:   e.Summary,
 		StartTime: e.StartTime,
 		EndTime:   e.EndTime,
-		Metadata:  EventMetadata{BudgetId: e.BudgetId},
-	}, nil
+		Metadata:  EventMetadata{BudgetItemId: e.BudgetItemId},
+	}
+}
+
+// GetLastEvents godoc
+// @Summary Get recent calendar events
+// @Description Retrieve the most recent calendar events. Specify the number using the 'last' query parameter (e.g., last=5)
+// @Tags Calendar
+// @Produce json
+// @Param last query int true "Number of recent events to retrieve" default(5)
+// @Success 200 {array} EventDTO
+// @Failure 403 {string} string "User not found"
+// @Router /api/calendar/event/recent [get]
+// @Security XUserId
+func (h *Handler) GetLastEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	lastString := r.URL.Query().Get("last")
+	last, err := strconv.Atoi(lastString)
+	if err != nil || last < 1 {
+		log.Warnf("Invalid last parameter: %s. Using default value 5", lastString)
+		last = 5
+	}
+
+	log.Tracef("Getting last %d events", last)
+
+	events, err := h.calendar.GetLastEvents(r.Context(), last)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	eventsDTO := make([]EventDTO, 0, len(events))
+	for _, event := range events {
+		eventsDTO = append(eventsDTO, eventToDTO(event))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(eventsDTO); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Tracef("Events returned: %d", len(eventsDTO))
 }

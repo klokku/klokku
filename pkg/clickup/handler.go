@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 type WorkspaceDTO struct {
@@ -28,16 +30,17 @@ type TagDTO struct {
 }
 
 type ConfigurationDTO struct {
-	WorkspaceId int                `json:"workspaceId"`
-	SpaceId     int                `json:"spaceId"`
-	FolderId    int                `json:"folderId"`
-	Mappings    []BudgetMappingDTO `json:"mappings"`
+	WorkspaceId           string             `json:"workspaceId"`
+	SpaceId               string             `json:"spaceId"`
+	FolderId              string             `json:"folderId"`
+	OnlyTasksWithPriority bool               `json:"onlyTasksWithPriority"`
+	Mappings              []BudgetMappingDTO `json:"mappings"`
 }
 
 type BudgetMappingDTO struct {
-	ClickUpSpaceId int    `json:"clickUpSpaceId"`
+	ClickUpSpaceId string `json:"clickUpSpaceId"`
 	ClickUpTagName string `json:"clickUpTagName"`
-	BudgetId       int    `json:"budgetId"`
+	BudgetItemId   int    `json:"budgetItemId"`
 	Position       int    `json:"position"`
 }
 
@@ -56,6 +59,15 @@ func NewHandler(s Service, c Client) *Handler {
 	return &Handler{s, c}
 }
 
+// ListWorkspaces godoc
+// @Summary List ClickUp workspaces
+// @Description Get all ClickUp workspaces the user has access to
+// @Tags ClickUp
+// @Produce json
+// @Success 200 {array} WorkspaceDTO
+// @Failure 403 {string} string "Unauthorized"
+// @Router /api/integrations/clickup/workspace [get]
+// @Security XUserId
 func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	workspaces, err := h.client.GetAuthorizedWorkspaces(r.Context())
@@ -81,16 +93,22 @@ func (h *Handler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListSpaces godoc
+// @Summary List ClickUp spaces
+// @Description Get all spaces in a ClickUp workspace
+// @Tags ClickUp
+// @Produce json
+// @Param workspaceId query int true "Workspace ID"
+// @Success 200 {array} SpaceDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/space [get]
+// @Security XUserId
 func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	workspaceIdString := r.URL.Query().Get("workspaceId")
-	if workspaceIdString == "" {
+	workspaceId := r.URL.Query().Get("workspaceId")
+	if workspaceId == "" {
 		http.Error(w, "workspaceId is required", http.StatusBadRequest)
-		return
-	}
-	workspaceId, err := strconv.Atoi(workspaceIdString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -113,19 +131,24 @@ func (h *Handler) ListSpaces(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListTags godoc
+// @Summary List ClickUp tags
+// @Description Get all tags in a ClickUp space
+// @Tags ClickUp
+// @Produce json
+// @Param spaceId query int true "Space ID"
+// @Success 200 {array} TagDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/tag [get]
+// @Security XUserId
 func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	spaceIdString := r.URL.Query().Get("spaceId")
-	if spaceIdString == "" {
+	spaceId := r.URL.Query().Get("spaceId")
+	if spaceId == "" {
 		http.Error(w, "spaceId is required", http.StatusBadRequest)
 		return
 	}
-	spaceId, err := strconv.Atoi(spaceIdString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	tags, err := h.client.GetTags(r.Context(), spaceId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -152,17 +175,25 @@ func (h *Handler) ListTags(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListFolders godoc
+// @Summary List ClickUp folders
+// @Description Get all folders in a ClickUp space
+// @Tags ClickUp
+// @Produce json
+// @Param spaceId query int true "Space ID"
+// @Success 200 {array} FolderDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/folder [get]
+// @Security XUserId
 func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	spaceIdString := r.URL.Query().Get("spaceId")
-	if spaceIdString == "" {
+	spaceId := r.URL.Query().Get("spaceId")
+	if spaceId == "" {
 		http.Error(w, "spaceId is required", http.StatusBadRequest)
-	}
-	spaceId, err := strconv.Atoi(spaceIdString)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	folders, err := h.client.GetFolders(r.Context(), spaceId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -180,31 +211,57 @@ func (h *Handler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// StoreConfiguration godoc
+// @Summary Store ClickUp configuration
+// @Description Save ClickUp integration configuration and budget mappings
+// @Tags ClickUp
+// @Accept json
+// @Param configuration body ConfigurationDTO true "ClickUp Configuration"
+// @Success 200 "OK"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/configuration [put]
+// @Security XUserId
 func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	budgetPlanIdString := vars["budgetPlanId"]
+	if budgetPlanIdString == "" {
+		http.Error(w, "budgetPlanId is required", http.StatusBadRequest)
+		return
+	}
+	budgetPlanId, err := strconv.Atoi(budgetPlanIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	var configurationDTO ConfigurationDTO
 	if err := json.NewDecoder(r.Body).Decode(&configurationDTO); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	mappings := make([]BudgetMapping, 0, len(configurationDTO.Mappings))
+	mappings := make([]BudgetItemMapping, 0, len(configurationDTO.Mappings))
 	for _, mappingDTO := range configurationDTO.Mappings {
-		mappings = append(mappings, BudgetMapping{
+		mappings = append(mappings, BudgetItemMapping{
 			ClickupSpaceId: mappingDTO.ClickUpSpaceId,
 			ClickupTagName: mappingDTO.ClickUpTagName,
-			BudgetId:       mappingDTO.BudgetId,
+			BudgetItemId:   mappingDTO.BudgetItemId,
 			Position:       mappingDTO.Position,
 		})
 	}
 
 	configuration := Configuration{
-		WorkspaceId: configurationDTO.WorkspaceId,
-		SpaceId:     configurationDTO.SpaceId,
-		FolderId:    configurationDTO.FolderId,
-		Mappings:    mappings,
+		WorkspaceId:           configurationDTO.WorkspaceId,
+		SpaceId:               configurationDTO.SpaceId,
+		FolderId:              configurationDTO.FolderId,
+		OnlyTasksWithPriority: configurationDTO.OnlyTasksWithPriority,
+		Mappings:              mappings,
 	}
 
-	err := h.service.StoreConfiguration(r.Context(), configuration)
+	err = h.service.StoreConfiguration(r.Context(), budgetPlanId, configuration)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -212,24 +269,48 @@ func (h *Handler) StoreConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// GetConfiguration godoc
+// @Summary Get ClickUp configuration
+// @Description Retrieve the current ClickUp integration configuration
+// @Tags ClickUp
+// @Produce json
+// @Success 200 {object} ConfigurationDTO
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/configuration [get]
+// @Security XUserId
 func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	configuration, err := h.service.GetConfiguration(r.Context())
+
+	vars := mux.Vars(r)
+	budgetPlanIdString := vars["budgetPlanId"]
+	if budgetPlanIdString == "" {
+		http.Error(w, "budgetPlanId is required", http.StatusBadRequest)
+		return
+	}
+	budgetPlanId, err := strconv.Atoi(budgetPlanIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	configuration, err := h.service.GetConfiguration(r.Context(), budgetPlanId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	configurationDTO := ConfigurationDTO{
-		WorkspaceId: configuration.WorkspaceId,
-		SpaceId:     configuration.SpaceId,
-		FolderId:    configuration.FolderId,
-		Mappings:    make([]BudgetMappingDTO, 0, len(configuration.Mappings)),
+		WorkspaceId:           configuration.WorkspaceId,
+		SpaceId:               configuration.SpaceId,
+		FolderId:              configuration.FolderId,
+		OnlyTasksWithPriority: configuration.OnlyTasksWithPriority,
+		Mappings:              make([]BudgetMappingDTO, 0, len(configuration.Mappings)),
 	}
 	for _, mapping := range configuration.Mappings {
 		configurationDTO.Mappings = append(configurationDTO.Mappings, BudgetMappingDTO{
 			ClickUpSpaceId: mapping.ClickupSpaceId,
 			ClickUpTagName: mapping.ClickupTagName,
-			BudgetId:       mapping.BudgetId,
+			BudgetItemId:   mapping.BudgetItemId,
 			Position:       mapping.Position,
 		})
 	}
@@ -240,6 +321,14 @@ func (h *Handler) GetConfiguration(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DisableIntegration godoc
+// @Summary Disable ClickUp integration
+// @Description Disconnect and disable the ClickUp integration
+// @Tags ClickUp
+// @Success 200 "OK"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/auth [delete]
+// @Security XUserId
 func (h *Handler) DisableIntegration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	err := h.service.DisableIntegration(r.Context())
@@ -250,20 +339,31 @@ func (h *Handler) DisableIntegration(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// GetTasks godoc
+// @Summary Get ClickUp tasks
+// @Description Retrieve ClickUp tasks for a specific budget item
+// @Tags ClickUp
+// @Produce json
+// @Param budgetItemId query int true "Budget Item ID"
+// @Success 200 {array} TaskDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/integrations/clickup/tasks [get]
+// @Security XUserId
 func (h *Handler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	budgetIdString := r.URL.Query().Get("budgetId")
-	if budgetIdString == "" {
-		http.Error(w, "budgetId is required", http.StatusBadRequest)
+	budgetItemIdString := r.URL.Query().Get("budgetItemId")
+	if budgetItemIdString == "" {
+		http.Error(w, "budgetItemId is required", http.StatusBadRequest)
 		return
 	}
-	budgetId, err := strconv.Atoi(budgetIdString)
+	budgetItemId, err := strconv.Atoi(budgetItemIdString)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	tasks, err := h.service.GetTasksByBudgetId(r.Context(), budgetId)
+	tasks, err := h.service.GetTasksByBudgetItemId(r.Context(), budgetItemId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -283,4 +383,36 @@ func (h *Handler) GetTasks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// DeleteBudgetPlanConfiguration godoc
+// @Summary Delete ClickUp configuration for budget plan
+// @Description Remove ClickUp integration configuration for a specific budget plan
+// @Tags ClickUp
+// @Param budgetPlanId path int true "Budget Plan ID"
+// @Success 204 "No Content"
+// @Failure 400 {string} string "Bad Request"
+// @Router /api/integrations/clickup/configuration/{budgetPlanId} [delete]
+// @Security XUserId
+func (h *Handler) DeleteBudgetPlanConfiguration(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	vars := mux.Vars(r)
+	budgetPlanIdString := vars["budgetPlanId"]
+	if budgetPlanIdString == "" {
+		http.Error(w, "budgetPlanId is required", http.StatusBadRequest)
+		return
+	}
+	budgetPlanId, err := strconv.Atoi(budgetPlanIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = h.service.DeleteBudgetPlanConfiguration(r.Context(), budgetPlanId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

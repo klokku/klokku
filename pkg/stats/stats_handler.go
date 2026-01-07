@@ -2,61 +2,85 @@ package stats
 
 import (
 	"encoding/json"
-	"github.com/klokku/klokku/internal/rest"
-	"github.com/klokku/klokku/pkg/budget"
+	"errors"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/klokku/klokku/internal/rest"
 )
 
 type DailyStatsDTO struct {
-	Date      time.Time        `json:"date"`
-	Budgets   []BudgetStatsDTO `json:"budgets"`
-	TotalTime int              `json:"totalTime"`
+	Date        time.Time          `json:"date"`
+	PerPlanItem []PlanItemStatsDTO `json:"perPlanItem"`
+	TotalTime   int                `json:"totalTime"`
 }
 
-type BudgetStatsDTO struct {
-	Budget         budget.BudgetDTO   `json:"budget"`
-	BudgetOverride *BudgetOverrideDTO `json:"budgetOverride,omitempty"`
-	Duration       int                `json:"duration"`
-	Remaining      int                `json:"remaining"`
+type PlanItemDTO struct {
+	BudgetPlanId       int    `json:"budgetPlanId"`
+	BudgetItemId       int    `json:"budgetItemId"`
+	WeeklyItemId       int    `json:"weeklyItemId"`
+	Name               string `json:"name"`
+	Icon               string `json:"icon"`
+	Color              string `json:"color"`
+	Position           int    `json:"position"`
+	WeeklyItemDuration int    `json:"weeklyItemDuration"`
+	BudgetItemDuration int    `json:"budgetItemDuration"`
+	WeeklyOccurrences  int    `json:"weeklyOccurrences"`
+	Notes              string `json:"notes"`
 }
 
-type BudgetOverrideDTO struct {
-	ID         int       `json:"id"`
-	BudgetID   int       `json:"budgetId"`
-	StartDate  time.Time `json:"startDate"`
-	WeeklyTime int       `json:"weeklyTime"`
-	Notes      *string   `json:"notes"`
+type PlanItemStatsDTO struct {
+	PlanItem  PlanItemDTO `json:"planItem"`
+	Duration  int         `json:"duration"`
+	Remaining int         `json:"remaining"`
+	StartDate time.Time   `json:"startDate"`
+	EndDate   time.Time   `json:"endDate"`
 }
 
-type StatsSummaryDTO struct {
-	StartDate      time.Time        `json:"startDate"`
-	EndDate        time.Time        `json:"endDate"`
-	Days           []DailyStatsDTO  `json:"days"`
-	Budgets        []BudgetStatsDTO `json:"budgets"`
-	TotalPlanned   int              `json:"totalPlanned"`
-	TotalTime      int              `json:"totalTime"`
-	TotalRemaining int              `json:"totalRemaining"`
+type WeeklyStatsSummaryDTO struct {
+	StartDate      time.Time          `json:"startDate"`
+	EndDate        time.Time          `json:"endDate"`
+	PerDay         []DailyStatsDTO    `json:"perDay"`
+	PerPlanItem    []PlanItemStatsDTO `json:"perPlanItem"`
+	TotalPlanned   int                `json:"totalPlanned"`
+	TotalTime      int                `json:"totalTime"`
+	TotalRemaining int                `json:"totalRemaining"`
+}
+
+type PlanItemHistoryStatsDTO struct {
+	StartDate    time.Time          `json:"startDate"`
+	EndDate      time.Time          `json:"endDate"`
+	StatsPerWeek []PlanItemStatsDTO `json:"statsPerWeek"`
 }
 
 type StatsHandler struct {
-	statsService     StatsService
-	csvStatsRenderer StatsRenderer
+	statsService StatsService
 }
 
-func NewStatsHandler(statsService StatsService, csvStatsRenderer StatsRenderer) *StatsHandler {
-	return &StatsHandler{statsService, csvStatsRenderer}
+func NewStatsHandler(statsService StatsService) *StatsHandler {
+	return &StatsHandler{statsService}
 }
 
-func (handler *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	fromDateString := r.URL.Query().Get("fromDate")
-	toDateString := r.URL.Query().Get("toDate")
-	fromDate, err := time.Parse(time.RFC3339, fromDateString)
+// GetWeeklyStats godoc
+// @Summary Get weekly statistics
+// @Description Retrieve statistics for a specific week including time spent per plan item
+// @Tags Stats
+// @Produce json
+// @Param date query string true "Date in RFC3339 format (can be any day of the week)"
+// @Success 200 {object} WeeklyStatsSummaryDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid date format"
+// @Failure 403 {string} string "User not found"
+// @Router /api/stats/weekly [get]
+// @Security XUserId
+func (handler *StatsHandler) GetWeeklyStats(w http.ResponseWriter, r *http.Request) {
+	weekDateString := r.URL.Query().Get("date")
+	weekDate, err := time.Parse(time.RFC3339, weekDateString)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
-			Error:   "Invalid fromDate format",
-			Details: "fromDate must be in RFC3339 format",
+			Error:   "Invalid date format",
+			Details: "date must be in RFC3339 format",
 		})
 		if encodeErr != nil {
 			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
@@ -64,12 +88,108 @@ func (handler *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	toDate, err := time.Parse(time.RFC3339, toDateString)
+	stats, err := handler.statsService.GetWeeklyStats(r.Context(), weekDate)
+	if err != nil {
+		if errors.Is(err, ErrNoStatsFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	statsSummaryDTO := statsSummaryToDTO(&stats)
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(statsSummaryDTO); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func statsSummaryToDTO(stats *WeeklyStatsSummary) *WeeklyStatsSummaryDTO {
+	budgetStats := make([]PlanItemStatsDTO, 0, len(stats.PerPlanItem))
+	for _, planItemStats := range stats.PerPlanItem {
+		budgetStatsDTO := planItemStatsToDTO(planItemStats)
+		budgetStats = append(budgetStats, budgetStatsDTO)
+	}
+
+	days := make([]DailyStatsDTO, 0, len(stats.PerDay))
+	for _, day := range stats.PerDay {
+		dailyStatsDTO := DailyStatsDTO{
+			Date:      day.Date,
+			TotalTime: int(day.TotalTime.Seconds()),
+		}
+		for _, dayItemStats := range day.StatsPerPlanItem {
+			budgetStatsDTO := planItemStatsToDTO(dayItemStats)
+			dailyStatsDTO.PerPlanItem = append(dailyStatsDTO.PerPlanItem, budgetStatsDTO)
+		}
+		days = append(days, dailyStatsDTO)
+	}
+
+	return &WeeklyStatsSummaryDTO{
+		StartDate:      stats.StartDate,
+		EndDate:        stats.EndDate,
+		PerDay:         days,
+		PerPlanItem:    budgetStats,
+		TotalPlanned:   int(stats.TotalPlanned.Seconds()),
+		TotalTime:      int(stats.TotalTime.Seconds()),
+		TotalRemaining: int(stats.TotalRemaining.Seconds()),
+	}
+}
+
+func planItemStatsToDTO(itemStats PlanItemStats) PlanItemStatsDTO {
+	return PlanItemStatsDTO{
+		PlanItem:  planItemToDTO(itemStats.PlanItem),
+		Duration:  int(itemStats.Duration.Seconds()),
+		Remaining: int(itemStats.Remaining.Seconds()),
+		StartDate: itemStats.StartDate,
+		EndDate:   itemStats.EndDate,
+	}
+}
+
+func planItemToDTO(planItem PlanItem) PlanItemDTO {
+	return PlanItemDTO{
+		BudgetPlanId:       planItem.BudgetPlanId,
+		BudgetItemId:       planItem.BudgetItemId,
+		WeeklyItemId:       planItem.WeeklyItemId,
+		Name:               planItem.Name,
+		Icon:               planItem.Icon,
+		Color:              planItem.Color,
+		Position:           planItem.Position,
+		WeeklyItemDuration: int(planItem.WeeklyItemDuration.Seconds()),
+		BudgetItemDuration: int(planItem.BudgetItemDuration.Seconds()),
+		WeeklyOccurrences:  planItem.WeeklyOccurrences,
+		Notes:              planItem.Notes,
+	}
+}
+
+// GetPlanItemByWeekHistoryStats godoc
+// @Summary Get historical statistics for a specific budget item
+// @Description Retrieve statistics for a specific budget item by week for a given period
+// @Tags Stats
+// @Produce json
+// @Param from query string true "Start date in RFC3339 format"
+// @Param to query string true "End date in RFC3339 format"
+// @Param budgetItemId query int true "Budget Item ID"
+// @Success 200 {object} PlanItemHistoryStatsDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid parameters"
+// @Failure 403 {string} string "User not found"
+// @Router /api/stats/item-history [get]
+// @Security XUserId
+func (handler *StatsHandler) GetPlanItemByWeekHistoryStats(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	query := r.URL.Query()
+
+	fromStr := query.Get("from")
+	toStr := query.Get("to")
+	budgetItemIdStr := query.Get("budgetItemId")
+
+	from, err := time.Parse(time.RFC3339, fromStr)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
-			Error:   "Invalid toDate format",
-			Details: "toDate must be in RFC3339 format",
+			Error:   "Invalid 'from' date format",
+			Details: "date must be in RFC3339 format",
 		})
 		if encodeErr != nil {
 			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
@@ -77,91 +197,60 @@ func (handler *StatsHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	stats, err := handler.statsService.GetStats(r.Context(), fromDate, toDate)
+
+	to, err := time.Parse(time.RFC3339, toStr)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
+			Error:   "Invalid 'to' date format",
+			Details: "date must be in RFC3339 format",
+		})
+		if encodeErr != nil {
+			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		return
+	}
+
+	budgetItemId, err := strconv.Atoi(budgetItemIdStr)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
+			Error:   "Invalid 'budgetItemId' format",
+			Details: "budgetItemId must be an integer",
+		})
+		if encodeErr != nil {
+			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		return
+	}
+
+	stats, err := handler.statsService.GetPlanItemByWeekHistoryStats(ctx, from, to, budgetItemId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if r.Header.Get("Accept") == "text/csv" {
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		csv, err := handler.csvStatsRenderer.RenderStats(stats)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if _, err := w.Write([]byte(csv)); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		return
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		responseStats := convertToJsonResponse(&stats)
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(responseStats); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
+	statsDTO := planItemHistoryStatsToDTO(stats)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(statsDTO); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func convertToJsonResponse(stats *StatsSummary) *StatsSummaryDTO {
-	budgetStats := make([]BudgetStatsDTO, 0, len(stats.Budgets))
-	for _, budgetStat := range stats.Budgets {
-		budgetStatsDTO := BudgetStatsDTO{
-			Budget:    budget.BudgetToDTO(budgetStat.Budget),
-			Duration:  int(budgetStat.Duration.Seconds()),
-			Remaining: int(budgetStat.Remaining.Seconds()),
-		}
-		if budgetStat.BudgetOverride != nil {
-			budgetStatsDTO.BudgetOverride = &BudgetOverrideDTO{
-				ID:         budgetStat.BudgetOverride.ID,
-				BudgetID:   budgetStat.BudgetOverride.BudgetID,
-				StartDate:  budgetStat.BudgetOverride.StartDate,
-				WeeklyTime: int(budgetStat.BudgetOverride.WeeklyTime.Seconds()),
-				Notes:      budgetStat.BudgetOverride.Notes,
-			}
-		}
+func planItemHistoryStatsToDTO(stats PlanItemHistoryStats) PlanItemHistoryStatsDTO {
 
-		budgetStats = append(budgetStats, budgetStatsDTO)
+	statsPerWeek := make([]PlanItemStatsDTO, 0, len(stats.StatsPerWeek))
+	for _, weekStats := range stats.StatsPerWeek {
+		statsPerWeek = append(statsPerWeek, planItemStatsToDTO(weekStats))
 	}
 
-	days := make([]DailyStatsDTO, 0, len(stats.Days))
-	for _, day := range stats.Days {
-		dailyStatsDTO := DailyStatsDTO{
-			Date:      day.Date,
-			TotalTime: int(day.TotalTime.Seconds()),
-		}
-		for _, dayBudget := range day.Budgets {
-			budgetStatsDTO := BudgetStatsDTO{
-				Budget:    budget.BudgetToDTO(dayBudget.Budget),
-				Duration:  int(dayBudget.Duration.Seconds()),
-				Remaining: int(dayBudget.Remaining.Seconds()),
-			}
-			if dayBudget.BudgetOverride != nil {
-				budgetStatsDTO.BudgetOverride = &BudgetOverrideDTO{
-					ID:         dayBudget.BudgetOverride.ID,
-					BudgetID:   dayBudget.BudgetOverride.BudgetID,
-					StartDate:  dayBudget.BudgetOverride.StartDate,
-					WeeklyTime: int(dayBudget.BudgetOverride.WeeklyTime.Seconds()),
-					Notes:      dayBudget.BudgetOverride.Notes,
-				}
-			}
-			dailyStatsDTO.Budgets = append(dailyStatsDTO.Budgets, budgetStatsDTO)
-		}
-		days = append(days, dailyStatsDTO)
+	return PlanItemHistoryStatsDTO{
+		StartDate:    stats.StartDate,
+		EndDate:      stats.EndDate,
+		StatsPerWeek: statsPerWeek,
 	}
-
-	return &StatsSummaryDTO{
-		StartDate:      stats.StartDate,
-		EndDate:        stats.EndDate,
-		Days:           days,
-		Budgets:        budgetStats,
-		TotalPlanned:   int(stats.TotalPlanned.Seconds()),
-		TotalTime:      int(stats.TotalTime.Seconds()),
-		TotalRemaining: int(stats.TotalRemaining.Seconds()),
-	}
-
 }

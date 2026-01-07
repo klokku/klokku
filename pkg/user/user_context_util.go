@@ -9,20 +9,29 @@ import (
 
 type contextKey string
 
-const UserIDKey contextKey = "userId"
+const UserKey contextKey = "user"
 
 var ErrNoUser = errors.New("user not found")
 
 // CurrentId retrieves the current user's ID from the context. Returns ErrNoUser if ID not present in context.
 func CurrentId(ctx context.Context) (int, error) {
-	id, ok := ctx.Value(UserIDKey).(int)
+	user, ok := ctx.Value(UserKey).(User)
 	if !ok {
 		log.Trace("user not found in context")
 		return 0, ErrNoUser
 	}
-	return id, nil
+	return user.Id, nil
 }
 
-func WithId(ctx context.Context, id int) context.Context {
-	return context.WithValue(ctx, UserIDKey, id)
+func CurrentUser(ctx context.Context) (User, error) {
+	user, ok := ctx.Value(UserKey).(User)
+	if !ok {
+		log.Trace("user not found in context")
+		return User{}, ErrNoUser
+	}
+	return user, nil
+}
+
+func WithUser(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, UserKey, user)
 }

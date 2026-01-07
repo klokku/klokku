@@ -13,5 +13,5 @@ type Event struct {
 }
 
 type EventMetadata struct {
-	BudgetId int `json:"budgetId"`
+	BudgetItemId int `json:"budgetItemId"`
 }

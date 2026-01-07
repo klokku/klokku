@@ -1,17 +1,16 @@
 package clickup
 
 type Configuration struct {
-	WorkspaceId           int
-	SpaceId               int
-	FolderId              int
+	WorkspaceId           string
+	SpaceId               string
+	FolderId              string
 	OnlyTasksWithPriority bool
-	Mappings              []BudgetMapping
+	Mappings              []BudgetItemMapping
 }
 
-type BudgetMapping struct {
-	Id             int
-	ClickupSpaceId int
+type BudgetItemMapping struct {
+	ClickupSpaceId string
 	ClickupTagName string
-	BudgetId       int
+	BudgetItemId   int
 	Position       int
 }

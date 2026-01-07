@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+
 	"github.com/klokku/klokku/pkg/user"
 	log "github.com/sirupsen/logrus"
-	"net/http"
 )
 
 const (
@@ -51,12 +52,12 @@ type Tag struct {
 }
 
 type Client interface {
-	GetAuthorizedWorkspaces(ctx context.Context) ([]Workspace, error) // /v2/oauth/token
-	GetSpaces(ctx context.Context, workspaceId int) ([]Space, error)  // /v2/team/{team_id}/space
-	GetFolders(ctx context.Context, spaceId int) ([]Folder, error)    // /v2/space/{space_id}/folder
-	GetFilteredTeamTasks(ctx context.Context, workspaceId int, spaceId int, folderId int, page int, tagName string, withPrioritySetOnly bool) ([]Task,
-		error) // /v2/team/{team_Id}/task
-	GetTags(ctx context.Context, spaceId int) ([]Tag, error) // /v2/space/{space_id}/tag
+	GetAuthorizedWorkspaces(ctx context.Context) ([]Workspace, error)   // /v2/oauth/token
+	GetSpaces(ctx context.Context, workspaceId string) ([]Space, error) // /v2/team/{team_id}/space
+	GetFolders(ctx context.Context, spaceId string) ([]Folder, error)   // /v2/space/{space_id}/folder
+	GetFilteredTeamTasks(ctx context.Context, workspaceId string, spaceId string, folderId string, page int, tagName string,
+		withPrioritySetOnly bool) ([]Task, error) // /v2/team/{team_Id}/task
+	GetTags(ctx context.Context, spaceId string) ([]Tag, error) // /v2/space/{space_id}/tag
 }
 
 type ClientImpl struct {
@@ -136,7 +137,7 @@ func (s *ClientImpl) GetAuthorizedWorkspaces(ctx context.Context) ([]Workspace, 
 }
 
 // GetSpaces retrieves the spaces in a workspace
-func (s *ClientImpl) GetSpaces(ctx context.Context, workspaceId int) ([]Space, error) {
+func (s *ClientImpl) GetSpaces(ctx context.Context, workspaceId string) ([]Space, error) {
 	client, err := s.prepareClickUpClient(ctx)
 	if err != nil {
 		log.Errorf("Failed to prepare ClickUp client: %v", err)
@@ -145,7 +146,7 @@ func (s *ClientImpl) GetSpaces(ctx context.Context, workspaceId int) ([]Space, e
 
 	// According to ClickUp API docs, the endpoint to get spaces is:
 	// GET https://api.clickup.com/api/v2/team/{team_id}/space
-	url := fmt.Sprintf("%s/team/%d/space", baseURL, workspaceId)
+	url := fmt.Sprintf("%s/team/%s/space", baseURL, workspaceId)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		log.Errorf("Failed to create request: %v", err)
@@ -179,7 +180,7 @@ func (s *ClientImpl) GetSpaces(ctx context.Context, workspaceId int) ([]Space, e
 }
 
 // GetFolders retrieves the folders in a space
-func (s *ClientImpl) GetFolders(ctx context.Context, spaceId int) ([]Folder, error) {
+func (s *ClientImpl) GetFolders(ctx context.Context, spaceId string) ([]Folder, error) {
 	client, err := s.prepareClickUpClient(ctx)
 	if err != nil {
 		log.Errorf("Failed to prepare ClickUp client: %v", err)
@@ -188,7 +189,7 @@ func (s *ClientImpl) GetFolders(ctx context.Context, spaceId int) ([]Folder, err
 
 	// According to ClickUp API docs, the endpoint to get folders is:
 	// GET https://api.clickup.com/api/v2/space/{space_id}/folder
-	url := fmt.Sprintf("%s/space/%d/folder", baseURL, spaceId)
+	url := fmt.Sprintf("%s/space/%s/folder", baseURL, spaceId)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		log.Errorf("Failed to create request: %v", err)
@@ -222,7 +223,7 @@ func (s *ClientImpl) GetFolders(ctx context.Context, spaceId int) ([]Folder, err
 }
 
 // GetFilteredTeamTasks retrieves tasks for a team with optional filtering
-func (s *ClientImpl) GetFilteredTeamTasks(ctx context.Context, workspaceId int, spaceId int, folderId int, page int, tagName string,
+func (s *ClientImpl) GetFilteredTeamTasks(ctx context.Context, workspaceId string, spaceId string, folderId string, page int, tagName string,
 	withPrioritySetOnly bool) ([]Task, error) {
 
 	client, err := s.prepareClickUpClient(ctx)
@@ -233,19 +234,19 @@ func (s *ClientImpl) GetFilteredTeamTasks(ctx context.Context, workspaceId int, 
 
 	// According to ClickUp API docs, the endpoint to get team tasks is:
 	// GET https://api.clickup.com/api/v2/team/{team_id}/task
-	url := fmt.Sprintf("%s/team/%d/task", baseURL, workspaceId)
+	url := fmt.Sprintf("%s/team/%s/task", baseURL, workspaceId)
 
 	// Add query parameters for filtering
 	queryParams := make(map[string]string)
 
 	// Add space_ids query param if spaceId is provided
-	if spaceId != 0 {
-		queryParams["space_ids[]"] = fmt.Sprintf("%d", spaceId)
+	if spaceId != "" {
+		queryParams["space_ids[]"] = spaceId
 	}
 
 	// Add project_ids query param if folderId is provided
-	if folderId != 0 {
-		queryParams["project_ids[]"] = fmt.Sprintf("%d", folderId)
+	if folderId != "" {
+		queryParams["project_ids[]"] = folderId
 	}
 
 	// Add page query param
@@ -315,7 +316,7 @@ func (s *ClientImpl) GetFilteredTeamTasks(ctx context.Context, workspaceId int, 
 }
 
 // GetTags retrieves tags for a space
-func (s *ClientImpl) GetTags(ctx context.Context, spaceId int) ([]Tag, error) {
+func (s *ClientImpl) GetTags(ctx context.Context, spaceId string) ([]Tag, error) {
 	client, err := s.prepareClickUpClient(ctx)
 	if err != nil {
 		log.Errorf("Failed to prepare ClickUp client: %v", err)
@@ -324,7 +325,7 @@ func (s *ClientImpl) GetTags(ctx context.Context, spaceId int) ([]Tag, error) {
 
 	// According to ClickUp API docs, the endpoint to get tags is:
 	// GET https://api.clickup.com/api/v2/space/{space_id}/tag
-	url := fmt.Sprintf("%s/space/%d/tag", baseURL, spaceId)
+	url := fmt.Sprintf("%s/space/%s/tag", baseURL, spaceId)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		log.Errorf("Failed to create request: %v", err)

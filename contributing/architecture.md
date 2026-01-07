@@ -4,7 +4,7 @@ Klokku follows a clean architecture pattern with clear separation of concerns be
 
 ## Technology Stack
 - **Backend**: Go (Golang)
-- **Database**: SQLite with migrations managed by golang-migrate
+- **Database**: Postgres with migrations managed by golang-migrate
 - **Web Framework**: Gorilla Mux for HTTP routing
 - **Frontend**: [React application](https://github.com/klokku/klokku-ui), optionally served by the Go backend
 - **External Integrations**: 

@@ -7,20 +7,17 @@ import (
 	"time"
 
 	"github.com/klokku/klokku/pkg/calendar"
-	"github.com/klokku/klokku/pkg/google"
 	"github.com/klokku/klokku/pkg/user"
 )
 
 type CalendarProvider struct {
 	userService    user.Service
-	googleService  google.Service
 	klokkuCalendar calendar.Calendar
 }
 
-func NewCalendarProvider(userService user.Service, googleService google.Service, klokkuCalendar calendar.Calendar) *CalendarProvider {
+func NewCalendarProvider(userService user.Service, klokkuCalendar calendar.Calendar) *CalendarProvider {
 	return &CalendarProvider{
 		userService:    userService,
-		googleService:  googleService,
 		klokkuCalendar: klokkuCalendar,
 	}
 }
@@ -32,14 +29,14 @@ func (c *CalendarProvider) getCalendar(ctx context.Context) (calendar.Calendar, 
 	}
 	switch u := currentUser; u.Settings.EventCalendarType {
 	case user.GoogleCalendar:
-		return c.googleService.GetCalendar(ctx, u.Settings.GoogleCalendar.CalendarId)
+		return nil, errors.New("google calendar implementation disabled")
 	case user.KlokkuCalendar:
 		return c.klokkuCalendar, nil
 	}
 	return nil, errors.New("unknown calendar type")
 }
 
-func (c *CalendarProvider) AddEvent(ctx context.Context, event calendar.Event) (*calendar.Event, error) {
+func (c *CalendarProvider) AddEvent(ctx context.Context, event calendar.Event) ([]calendar.Event, error) {
 	cal, err := c.getCalendar(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get calendar when adding event: %w", err)
@@ -55,7 +52,7 @@ func (c *CalendarProvider) GetEvents(ctx context.Context, from time.Time, to tim
 	return cal.GetEvents(ctx, from, to)
 }
 
-func (c *CalendarProvider) ModifyEvent(ctx context.Context, event calendar.Event) (*calendar.Event, error) {
+func (c *CalendarProvider) ModifyEvent(ctx context.Context, event calendar.Event) ([]calendar.Event, error) {
 	cal, err := c.getCalendar(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get calendar when modifying event: %w", err)
@@ -69,4 +66,12 @@ func (c *CalendarProvider) GetLastEvents(ctx context.Context, limit int) ([]cale
 		return nil, fmt.Errorf("failed to get calendar when getting last events: %w", err)
 	}
 	return cal.GetLastEvents(ctx, limit)
+}
+
+func (c *CalendarProvider) DeleteEvent(ctx context.Context, eventUid string) error {
+	cal, err := c.getCalendar(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get calendar when deleting event: %w", err)
+	}
+	return cal.DeleteEvent(ctx, eventUid)
 }

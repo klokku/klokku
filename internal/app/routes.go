@@ -3,33 +3,46 @@ package app
 import (
 	"github.com/gorilla/mux"
 	"github.com/klokku/klokku/internal/config"
+	httpSwagger "github.com/swaggo/http-swagger"
+
+	_ "github.com/klokku/klokku/docs" // Import generated docs
 )
 
 // RegisterRoutes registers all API endpoints.
 func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
-	// Budget
-	r.HandleFunc("/api/budget", deps.BudgetHandler.GetAll).Methods("GET")
-	r.HandleFunc("/api/budget", deps.BudgetHandler.Register).Methods("POST")
-	r.HandleFunc("/api/budget/{id}", deps.BudgetHandler.Update).Methods("PUT")
-	r.HandleFunc("/api/budget/{id}/position", deps.BudgetHandler.SetPosition).Methods("PUT")
-	r.HandleFunc("/api/budget/{id}", deps.BudgetHandler.Delete).Methods("DELETE")
 
-	// Budget Override
-	r.HandleFunc("/api/budget/override", deps.BudgetOverrideHandler.GetOverrides).Queries("startDate", "{startDate}").Methods("GET")
-	r.HandleFunc("/api/budget/override", deps.BudgetOverrideHandler.Register).Methods("POST")
-	r.HandleFunc("/api/budget/override/{overrideId}", deps.BudgetOverrideHandler.Update).Methods("PUT")
-	r.HandleFunc("/api/budget/override/{overrideId}", deps.BudgetOverrideHandler.Delete).Methods("DELETE")
+	// Swagger UI
+	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+
+	// Budget Plan
+	r.HandleFunc("/api/budgetplan", deps.BudgetPlanHandler.ListPlans).Methods("GET")
+	r.HandleFunc("/api/budgetplan", deps.BudgetPlanHandler.CreatePlan).Methods("POST")
+	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.GetPlan).Methods("GET")
+	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.UpdatePlan).Methods("PUT")
+	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.DeletePlan).Methods("DELETE")
+
+	// Budget Item
+	r.HandleFunc("/api/budgetplan/{planId}/item", deps.BudgetPlanHandler.RegisterItem).Methods("POST")
+	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.UpdateItem).Methods("PUT")
+	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}/position", deps.BudgetPlanHandler.SetItemPosition).Methods("PUT")
+	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.DeleteItem).Methods("DELETE")
+
+	// Weekly Plan item
+	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.GetPlan).Queries("date", "{date}").Methods("GET")
+	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.ResetWeek).Queries("date", "{date}").Methods("DELETE")
+	r.HandleFunc("/api/weeklyplan/item", deps.WeeklyPlanHandler.UpdateItem).Queries("date", "{date}").Methods("PUT")
+	r.HandleFunc("/api/weeklyplan/item/{itemId}", deps.WeeklyPlanHandler.ResetItem).Methods("DELETE")
 
 	// Events
-	r.HandleFunc("/api/event", deps.EventHandler.StartEvent).Methods("POST")
-	r.HandleFunc("/api/event/current/status", deps.EventHandler.FinishCurrentEvent).Methods("PATCH")
-	r.HandleFunc("/api/event/current/start", deps.EventHandler.ModifyCurrentEventStartTime).Methods("PATCH")
-	r.HandleFunc("/api/event/current", deps.EventHandler.DeleteCurrentEvent).Methods("DELETE")
-	r.HandleFunc("/api/event/current", deps.EventHandler.GetCurrentEvent).Methods("GET")
-	r.HandleFunc("/api/event", deps.EventHandler.GetLast5Events).Methods("GET").Queries("last", "5")
+	r.HandleFunc("/api/event", deps.CurrentEventHandler.StartEvent).Methods("POST")
+	r.HandleFunc("/api/event/current/start", deps.CurrentEventHandler.ModifyCurrentEventStartTime).Methods("PATCH")
+	r.HandleFunc("/api/event/current", deps.CurrentEventHandler.GetCurrentEvent).Methods("GET")
 
 	// Stats
-	r.HandleFunc("/api/stats", deps.StatsHandler.GetStats).Queries("fromDate", "{fromDate}", "toDate", "{toDate}").Methods("GET")
+	r.HandleFunc("/api/stats/weekly", deps.StatsHandler.GetWeeklyStats).Queries("date", "{date}").Methods("GET")
+	r.HandleFunc("/api/stats/item-history", deps.StatsHandler.GetPlanItemByWeekHistoryStats).
+		Methods("GET").
+		Queries("from", "{from}", "to", "{to}", "budgetItemId", "{budgetItemId}")
 
 	// User management
 	r.HandleFunc("/api/user/current", deps.UserHandler.CurrentUser).Methods("GET")
@@ -46,16 +59,9 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	// Klokku Calendar
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.GetEvents).Queries("from", "{from}", "to", "{to}").Methods("GET")
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.CreateEvent).Methods("POST")
+	r.HandleFunc("/api/calendar/event/recent", deps.KlokkuCalendarHandler.GetLastEvents).Methods("GET").Queries("last", "{last}")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.UpdateEvent).Methods("PUT")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.DeleteEvent).Methods("DELETE")
-	r.HandleFunc("/api/calendar/import-from-google", deps.CalendarMigratorHandler.MigrateFromGoogleToKlokku).Queries("from", "{from}", "to", "{to}").Methods("POST")
-	r.HandleFunc("/api/calendar/export-to-google", deps.CalendarMigratorHandler.MigrateFromKlokkuToGoogle).Queries("from", "{from}", "to", "{to}").Methods("POST")
-
-	// Google integration
-	r.HandleFunc("/api/integrations/google/auth/login", deps.GoogleAuth.OAuthLogin).Methods("GET")
-	r.HandleFunc("/api/integrations/google/auth/logout", deps.GoogleAuth.OAuthLogout).Methods("DELETE")
-	r.HandleFunc("/api/integrations/google/auth/callback", deps.GoogleAuth.OAuthCallback).Methods("GET")
-	r.HandleFunc("/api/integrations/google/calendars", deps.GoogleHandler.ListCalendars).Methods("GET")
 
 	// ClickUp integration
 	r.HandleFunc("/api/integrations/clickup/auth/login", deps.ClickUpAuth.OAuthLogin).Methods("GET")
@@ -66,7 +72,8 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/integrations/clickup/space", deps.ClickUpHandler.ListSpaces).Queries("workspaceId", "{workspaceId}").Methods("GET")
 	r.HandleFunc("/api/integrations/clickup/tag", deps.ClickUpHandler.ListTags).Queries("spaceId", "{spaceId}").Methods("GET")
 	r.HandleFunc("/api/integrations/clickup/folder", deps.ClickUpHandler.ListFolders).Queries("spaceId", "{spaceId}").Methods("GET")
-	r.HandleFunc("/api/integrations/clickup/configuration", deps.ClickUpHandler.GetConfiguration).Methods("GET")
-	r.HandleFunc("/api/integrations/clickup/configuration", deps.ClickUpHandler.StoreConfiguration).Methods("PUT")
-	r.HandleFunc("/api/integrations/clickup/tasks", deps.ClickUpHandler.GetTasks).Queries("budgetId", "{budgetId}").Methods("GET")
+	r.HandleFunc("/api/integrations/clickup/configuration/{budgetPlanId}", deps.ClickUpHandler.GetConfiguration).Methods("GET")
+	r.HandleFunc("/api/integrations/clickup/configuration/{budgetPlanId}", deps.ClickUpHandler.StoreConfiguration).Methods("PUT")
+	r.HandleFunc("/api/integrations/clickup/configuration/{budgetPlanId}", deps.ClickUpHandler.DeleteBudgetPlanConfiguration).Methods("DELETE")
+	r.HandleFunc("/api/integrations/clickup/tasks", deps.ClickUpHandler.GetTasks).Queries("budgetItemId", "{budgetItemId}").Methods("GET")
 }
