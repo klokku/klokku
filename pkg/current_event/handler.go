@@ -49,9 +49,9 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 	log.Trace("Starting new current event")
 
 	var startEventRequest struct {
-		BudgetItemId   int `json:"budgetItemId"`
-		Name           string
-		WeeklyDuration int
+		BudgetItemId   int    `json:"budgetItemId"`
+		Name           string `json:"name"`
+		WeeklyDuration int    `json:"weeklyDuration"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&startEventRequest); err != nil {

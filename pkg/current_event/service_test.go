@@ -339,4 +339,93 @@ func TestModifyCurrentEventStartTime(t *testing.T) {
 		assert.Equal(t, clock.Now().Add(-180*time.Minute), calendarEvent.StartTime)
 		assert.Equal(t, clock.Now().Add(-130*time.Minute), calendarEvent.EndTime)
 	})
+
+	t.Run("should only modify the last event when there are multiple previous events but start time only change to the last one", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		clock.SetNow(time.Date(2026, time.January, 7, 0, 0, 0, 0, location))
+		startTime := clock.Now()
+		clock.SetNow(startTime)
+		prevDayEvent1 := CurrentEvent{
+			StartTime: clock.Now(), // 07.01 00:00
+			PlanItem: PlanItem{
+				BudgetItemId:   1,
+				Name:           "Prev day event 1",
+				WeeklyDuration: time.Duration(52) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, prevDayEvent1)
+		clock.SetNow(startTime.Add(8 * time.Hour))
+		prevDayEvent2 := CurrentEvent{
+			StartTime: clock.Now(), // 07.01 8:00
+			PlanItem: PlanItem{
+				BudgetItemId:   2,
+				Name:           "Prev day event 2",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, prevDayEvent2)
+		clock.SetNow(clock.Now().Add(8 * time.Hour))
+		betweenDayEvent1 := CurrentEvent{
+			StartTime: clock.Now(), // 07.01 16:00
+			PlanItem: PlanItem{
+				BudgetItemId:   3,
+				Name:           "Between days event 1 (3)",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, betweenDayEvent1)
+		clock.SetNow(clock.Now().Add(9 * time.Hour))
+		currentDayEvent1 := CurrentEvent{
+			StartTime: clock.Now(), // 08.01 01:00
+			PlanItem: PlanItem{
+				BudgetItemId:   3,
+				Name:           "Current day event 1 (4)",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, currentDayEvent1)
+		clock.SetNow(clock.Now().Add(7 * time.Hour))
+		currentEvent := CurrentEvent{
+			StartTime: clock.Now(), // 08.01 08:00
+			PlanItem: PlanItem{
+				BudgetItemId:   3,
+				Name:           "Current day event 2 (5)",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, currentEvent)
+		clock.SetNow(clock.Now().Add(1 * time.Hour)) // 08.01 09:00
+
+		// when
+		service.ModifyCurrentEventStartTime(ctx, clock.Now().Add(-2*time.Hour)) // 08.01 07:00
+
+		// then
+		calendarEvents, err := calendarStub.GetLastEvents(ctx, 10)
+		require.NoError(t, err)
+		assert.Len(t, calendarEvents, 5)
+		prevDayCalEvent1 := calendarEvents[0]
+		assert.Equal(t, prevDayEvent1.PlanItem.Name, prevDayCalEvent1.Summary)
+		assert.Equal(t, prevDayEvent1.StartTime, prevDayCalEvent1.StartTime)
+		assert.Equal(t, prevDayEvent1.StartTime.Add(time.Duration(8)*time.Hour), prevDayCalEvent1.EndTime)
+		prevDayCalEvent2 := calendarEvents[1]
+		assert.Equal(t, prevDayEvent2.PlanItem.Name, prevDayCalEvent2.Summary)
+		assert.Equal(t, prevDayEvent2.StartTime, prevDayCalEvent2.StartTime)
+		assert.Equal(t, prevDayEvent2.StartTime.Add(time.Duration(8)*time.Hour), prevDayCalEvent2.EndTime)
+		betweenDayCalEvent3 := calendarEvents[2]
+		assert.Equal(t, betweenDayEvent1.PlanItem.Name, betweenDayCalEvent3.Summary)
+		assert.Equal(t, betweenDayEvent1.StartTime, betweenDayCalEvent3.StartTime)
+		assert.Equal(t, betweenDayEvent1.StartTime.Add(time.Duration(8)*time.Hour).Add(-time.Duration(1)*time.Nanosecond),
+			betweenDayCalEvent3.EndTime)
+		betweenDayCalEvent4 := calendarEvents[3]
+		assert.Equal(t, betweenDayEvent1.PlanItem.Name, betweenDayCalEvent3.Summary)
+		assert.Equal(t, betweenDayEvent1.StartTime.Add(time.Duration(8)*time.Hour), betweenDayCalEvent4.StartTime)
+		assert.Equal(t, betweenDayEvent1.StartTime.Add(time.Duration(9)*time.Hour), betweenDayCalEvent4.EndTime)
+		currentDayCalEvent1 := calendarEvents[4]
+		assert.Equal(t, currentDayEvent1.PlanItem.Name, currentDayCalEvent1.Summary)
+		assert.Equal(t, currentDayEvent1.StartTime, currentDayCalEvent1.StartTime)
+		assert.Equal(t, currentDayEvent1.StartTime.Add(time.Duration(7-1)*time.Hour), currentDayCalEvent1.EndTime)
+	})
 }
