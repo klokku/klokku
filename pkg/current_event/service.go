@@ -95,12 +95,19 @@ func (s *EventServiceImpl) ModifyCurrentEventStartTime(ctx context.Context, newS
 		return CurrentEvent{}, ErrNoCurrentEvent
 	}
 
-	// change previous event endTime to given time in calendar
-	fromTime := currentEvent.StartTime.Add(time.Hour * -24)
-	previousEvents, err := s.calendar.GetEvents(ctx, fromTime, currentEvent.StartTime)
-	if err != nil {
-		return CurrentEvent{}, err
+	var previousEvents []calendar.Event
+	if newStartTime.After(currentEvent.StartTime) { // Moving the current event start time forward
+		previousEvents, err = s.calendar.GetLastEvents(ctx, 1)
+		if err != nil {
+			return CurrentEvent{}, err
+		}
+	} else { // Moving the current event start time backward
+		previousEvents, err = s.calendar.GetEvents(ctx, newStartTime, time.Now())
+		if err != nil {
+			return CurrentEvent{}, err
+		}
 	}
+
 	if len(previousEvents) > 0 {
 		previousEvent := previousEvents[0] // the most early one
 		otherEvents := previousEvents[1:]  // the rest between previousEvent and currentEvent that need to be deleted
