@@ -97,27 +97,27 @@ func TestStatsServiceImpl_GetStats(t *testing.T) {
 	budgetPlanService.addPlan(budgetPlan)
 	calendarStub.AddEvent(ctx, calendar.Event{ // 60 minutes
 		Summary:   "BudgetItem 1",
-		StartTime: startTime,
-		EndTime:   startTime.Add(time.Hour),
+		StartTime: startTime.UTC(),
+		EndTime:   startTime.Add(time.Hour).UTC(),
 		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
 	calendarStub.AddEvent(ctx, calendar.Event{ // 30 minutes
 		Summary:   "BudgetItem 2",
-		StartTime: startTime.Add(time.Hour),
-		EndTime:   startTime.Add(time.Hour).Add(30 * time.Minute),
+		StartTime: startTime.Add(time.Hour).UTC(),
+		EndTime:   startTime.Add(time.Hour).Add(30 * time.Minute).UTC(),
 		Metadata:  calendar.EventMetadata{BudgetItemId: planItem2.BudgetItemId},
 	})
 	calendarStub.AddEvent(ctx, calendar.Event{ // 90 minutes
 		Summary:   "BudgetItem 1",
-		StartTime: startTime.Add(90 * time.Minute),
-		EndTime:   startTime.Add(90 * time.Minute).Add(90 * time.Minute),
+		StartTime: startTime.Add(90 * time.Minute).UTC(),
+		EndTime:   startTime.Add(90 * time.Minute).Add(90 * time.Minute).UTC(),
 		Metadata:  calendar.EventMetadata{BudgetItemId: planItem1.BudgetItemId},
 	})
 	secondDay := startTime.Add(24 * time.Hour)
 	calendarStub.AddEvent(ctx, calendar.Event{ // 75 minutes
 		Summary:   "BudgetItem 2",
-		StartTime: secondDay.Add(2 * time.Hour),
-		EndTime:   secondDay.Add(2 * time.Hour).Add(75 * time.Minute),
+		StartTime: secondDay.Add(2 * time.Hour).UTC(),
+		EndTime:   secondDay.Add(2 * time.Hour).Add(75 * time.Minute).UTC(),
 		Metadata:  calendar.EventMetadata{BudgetItemId: planItem2.BudgetItemId},
 	})
 
