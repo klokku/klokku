@@ -130,19 +130,23 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 	if err != nil {
 		return WeeklyStatsSummary{}, err
 	}
-	eventsDurationPerDay := s.eventsDurationPerDay(calendarEvents)
+	userTimezone, err := time.LoadLocation(currentUser.Settings.Timezone)
+	if err != nil {
+		return WeeklyStatsSummary{}, fmt.Errorf("failed to load user timezone: %w", err)
+	}
+	eventsDurationPerDay := s.eventsDurationPerDay(calendarEvents, userTimezone)
 	eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
 
 	statsByDate := make([]DailyStats, 0, len(eventsDurationPerDay))
 	for date := from; !date.After(to); date = date.AddDate(0, 0, 1) {
-		isToday := sameDays(s.clock.Now(), date, date.Location())
+		isToday := sameDays(s.clock.Now(), date, userTimezone)
 		todayCurrentEventTime := time.Duration(0)
 		if isToday {
 			todayCurrentEventTime = currentEventTime
 		}
 
-		// Normalize loop date to UTC midnight for map lookup
-		lookupDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+		// Normalize loop date to user timezone midnight for map lookup
+		lookupDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, userTimezone)
 		dateBudgetDuration := eventsDurationPerDay[lookupDate]
 
 		budgetsStats := prepareStatsByBudget(
@@ -188,12 +192,12 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 	}, nil
 }
 
-func (s *StatsServiceImpl) eventsDurationPerDay(events []calendar.Event) map[time.Time]map[int]time.Duration {
+func (s *StatsServiceImpl) eventsDurationPerDay(events []calendar.Event, userTimezone *time.Location) map[time.Time]map[int]time.Duration {
 	eventsByDate := make(map[time.Time]map[int]time.Duration)
 	for _, e := range events {
-		// Use UTC midnight for the map key to avoid location pointer mismatches
-		t := e.StartTime.In(e.StartTime.Location())
-		date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+		// Use user timezone midnight for the map key to avoid location pointer mismatches
+		t := e.StartTime.In(userTimezone)
+		date := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, userTimezone)
 
 		if eventsByDate[date] == nil {
 			eventsByDate[date] = make(map[int]time.Duration)
