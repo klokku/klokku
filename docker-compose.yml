@@ -1,9 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: prod
+    image: ghcr.io/klokku/klokku:latest
     restart: unless-stopped
     ports:
       - ${PORT}:${PORT}
