@@ -10,7 +10,14 @@ if (!(docker info 2>$null)) {
 Write-Host "📥 Downloading docker-compose.yml..."
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/klokku/klokku/refs/heads/main/docker-compose.yml" -OutFile "docker-compose.yml"
 
-# 3. Download .env.template and rename to .env (only if .env doesn't exist)
+# 3. Download init.sql for database setup
+Write-Host "📂 Preparing database initialization script..."
+if (-not (Test-Path "dev")) {
+    New-Item -Path "dev" -ItemType Directory | Out-Null
+}
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/klokku/klokku/refs/heads/main/db/init.sql" -OutFile "db/init.sql"
+
+# 4. Download .env.template and rename to .env (only if .env doesn't exist)
 if (-not (Test-Path ".env")) {
     Write-Host "📝 Creating .env from template..."
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/klokku/klokku/refs/heads/main/.env.template" -OutFile ".env"
@@ -18,7 +25,7 @@ if (-not (Test-Path ".env")) {
     Write-Host "ℹ️  .env already exists, skipping download to protect your settings." -ForegroundColor Yellow
 }
 
-# 4. Start the containers
+# 5. Start the containers
 Write-Host "🐋 Starting Docker containers..."
 docker compose up -d
 
