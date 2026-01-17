@@ -27,7 +27,7 @@ func preparePostgresContainer() (*postgres.PostgresContainer, error) {
 
 	pgContainer, err := postgres.Run(
 		ctx, "postgres:18.1-alpine",
-		postgres.WithInitScripts(filepath.Join(projectRoot, "dev", "init.sql")),
+		postgres.WithInitScripts(filepath.Join(projectRoot, "db", "init.sql")),
 		postgres.WithDatabase(dbName),
 		postgres.WithUsername(dbUser),
 		postgres.WithPassword(dbPassword),
