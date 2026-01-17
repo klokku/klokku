@@ -1,9 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: prod
+    image: ghcr.io/klokku/klokku:latest
     restart: unless-stopped
     ports:
       - ${PORT}:${PORT}
@@ -13,6 +10,7 @@ services:
       KLOKKU_HOST: ${KLOKKU_HOST}
       KLOKKU_DB_USER: ${POSTGRES_USER}
       KLOKKU_DB_PASS: ${POSTGRES_PASSWORD}
+      KLOKKU_DB_HOST: db
   db:
     image: postgres:18-alpine
     container_name: postgres-db
@@ -27,7 +25,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./dev/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
 volumes:
   postgres_data:
