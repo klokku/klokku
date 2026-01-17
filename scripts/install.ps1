@@ -12,8 +12,8 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/klokku/klokku/refs/hea
 
 # 3. Download init.sql for database setup
 Write-Host "📂 Preparing database initialization script..."
-if (-not (Test-Path "dev")) {
-    New-Item -Path "dev" -ItemType Directory | Out-Null
+if (-not (Test-Path "db")) {
+    New-Item -Path "db" -ItemType Directory | Out-Null
 }
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/klokku/klokku/refs/heads/main/db/init.sql" -OutFile "db/init.sql"
 

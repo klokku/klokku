@@ -17,7 +17,7 @@ curl -sSLO https://raw.githubusercontent.com/klokku/klokku/refs/heads/main/docke
 
 # 3. Download init.sql for database setup
 echo "📂 Preparing database initialization script..."
-mkdir -p dev
+mkdir -p db
 curl -sSL -o db/init.sql https://raw.githubusercontent.com/klokku/klokku/refs/heads/main/db/init.sql
 
 # 4. Download .env.template and rename to .env
