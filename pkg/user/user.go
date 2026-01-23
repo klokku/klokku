@@ -23,6 +23,7 @@ type Settings struct {
 	WeekFirstDay      time.Weekday
 	EventCalendarType EventCalendarType
 	GoogleCalendar    GoogleCalendarSettings
+	IgnoreShortEvents bool
 }
 
 type GoogleCalendarSettings struct {

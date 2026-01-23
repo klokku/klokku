@@ -55,7 +55,7 @@ func (u *UserRepoImpl) CreateUser(ctx context.Context, user User) (int, error) {
 
 func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type,
-				event_calendar_google_calendar_id FROM users WHERE id = $1`
+				event_calendar_google_calendar_id, ignore_short_events FROM users WHERE id = $1`
 	var user User
 	var googleCalendarId sql.NullString
 	err := u.db.QueryRow(ctx, query, id).
@@ -69,6 +69,7 @@ func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 			&user.Settings.WeekFirstDay,
 			&user.Settings.EventCalendarType,
 			&googleCalendarId,
+			&user.Settings.IgnoreShortEvents,
 		)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Errorf("user with id %d not found: %v", id, err)
@@ -85,7 +86,7 @@ func (u *UserRepoImpl) GetUser(ctx context.Context, id int) (User, error) {
 
 func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type,
-				event_calendar_google_calendar_id FROM users WHERE uid = $1`
+				event_calendar_google_calendar_id, ignore_short_events FROM users WHERE uid = $1`
 
 	var user User
 	var googleCalendarId sql.NullString
@@ -100,6 +101,7 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 			&user.Settings.WeekFirstDay,
 			&user.Settings.EventCalendarType,
 			&googleCalendarId,
+			&user.Settings.IgnoreShortEvents,
 		)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Infof("user with uid %s not found: %v", uid, err)
@@ -116,13 +118,14 @@ func (u *UserRepoImpl) GetUserByUid(ctx context.Context, uid string) (User, erro
 
 func (u *UserRepoImpl) UpdateUser(ctx context.Context, userId int, user User) (User, error) {
 	query := `UPDATE users SET display_name = $1, timezone = $2, week_first_day = $3, event_calendar_type = $4, 
-				event_calendar_google_calendar_id = $5 WHERE id = $6`
+				event_calendar_google_calendar_id = $5, ignore_short_events = $6 WHERE id = $7`
 	result, err := u.db.Exec(ctx, query,
 		user.DisplayName,
 		user.Settings.Timezone,
 		user.Settings.WeekFirstDay,
 		user.Settings.EventCalendarType,
 		user.Settings.GoogleCalendar.CalendarId,
+		user.Settings.IgnoreShortEvents,
 		userId,
 	)
 	if err != nil {
@@ -152,7 +155,7 @@ func (u *UserRepoImpl) DeleteUser(ctx context.Context, id int) error {
 
 func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 	query := `SELECT id, uid, username, display_name, photo_url, timezone, week_first_day, event_calendar_type, 
-		        event_calendar_google_calendar_id FROM users`
+		        event_calendar_google_calendar_id, ignore_short_events FROM users`
 	rows, err := u.db.Query(ctx, query)
 	if err != nil {
 		log.Errorf("failed to get users: %v", err)
@@ -164,7 +167,7 @@ func (u *UserRepoImpl) GetAllUsers(ctx context.Context) ([]User, error) {
 		var user User
 		var googleCalendarId sql.NullString
 		err := rows.Scan(&user.Id, &user.Uid, &user.Username, &user.DisplayName, &user.PhotoUrl, &user.Settings.Timezone,
-			&user.Settings.WeekFirstDay, &user.Settings.EventCalendarType, &googleCalendarId)
+			&user.Settings.WeekFirstDay, &user.Settings.EventCalendarType, &googleCalendarId, &user.Settings.IgnoreShortEvents)
 		if err != nil {
 			log.Errorf("failed to scan user: %v", err)
 			return nil, err

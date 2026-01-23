@@ -38,7 +38,7 @@ func (s *EventServiceImpl) FindCurrentEvent(ctx context.Context) (CurrentEvent, 
 }
 
 func (s *EventServiceImpl) StartNewEvent(ctx context.Context, event CurrentEvent) (CurrentEvent, error) {
-	userId, err := user.CurrentId(ctx)
+	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
 		return CurrentEvent{}, fmt.Errorf("failed to get current user: %w", err)
 	}
@@ -47,14 +47,23 @@ func (s *EventServiceImpl) StartNewEvent(ctx context.Context, event CurrentEvent
 		return CurrentEvent{}, err
 	}
 	if currentEvent.Id != 0 {
-		log.Debug("Storing previous event to calendar before starting new one")
-		err := s.storeEventToCalendar(ctx, currentEvent)
-		if err != nil {
-			return CurrentEvent{}, err
+		eventDuration := s.clock.Now().Sub(currentEvent.StartTime)
+		isShortEvent := eventDuration < time.Minute
+
+		if currentUser.Settings.IgnoreShortEvents && isShortEvent {
+			log.Debugf("Ignoring short event (duration: %v), not storing to calendar", eventDuration)
+			// Use the start time of the previous event for the new event
+			event.StartTime = currentEvent.StartTime
+		} else {
+			log.Debug("Storing previous event to calendar before starting new one")
+			err := s.storeEventToCalendar(ctx, currentEvent)
+			if err != nil {
+				return CurrentEvent{}, err
+			}
 		}
 	}
 
-	return s.repo.ReplaceCurrentEvent(ctx, userId, event)
+	return s.repo.ReplaceCurrentEvent(ctx, currentUser.Id, event)
 }
 
 func (s *EventServiceImpl) storeEventToCalendar(ctx context.Context, event CurrentEvent) error {

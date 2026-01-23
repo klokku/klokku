@@ -146,6 +146,142 @@ func TestStartNewEvent(t *testing.T) {
 		assert.Equal(t, existingEvent.StartTime, calendarEvents[0].StartTime)
 		assert.Equal(t, existingEvent.PlanItem.BudgetItemId, calendarEvents[0].Metadata.BudgetItemId)
 	})
+
+	t.Run("should not store short event when IgnoreShortEvents is true and use previous event start time", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given - enable IgnoreShortEvents setting
+		currentUser, _ := user.CurrentUser(ctx)
+		currentUser.Settings.IgnoreShortEvents = true
+		ctx = user.WithUser(context.Background(), currentUser)
+
+		shortEventStartTime := clock.Now().Add(-45 * time.Second)
+		shortEvent := CurrentEvent{
+			StartTime: shortEventStartTime,
+			PlanItem: PlanItem{
+				BudgetItemId:   100,
+				Name:           "Short event (should not be stored)",
+				WeeklyDuration: time.Duration(30) * time.Minute,
+			},
+		}
+
+		newEvent := CurrentEvent{
+			StartTime: clock.Now(),
+			PlanItem: PlanItem{
+				BudgetItemId:   200,
+				Name:           "New event",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+		}
+
+		// when
+		clock.SetNow(shortEventStartTime)
+		service.StartNewEvent(ctx, shortEvent)
+		clock.SetNow(shortEventStartTime.Add(45 * time.Second)) // 45 seconds later (< 1 minute)
+		result, err := service.StartNewEvent(ctx, newEvent)
+		require.NoError(t, err)
+
+		// then - no events should be stored in calendar
+		calendarEvents, err := calendarStub.GetLastEvents(ctx, 10)
+		require.NoError(t, err)
+		assert.Len(t, calendarEvents, 0, "Short event should not be stored in calendar")
+
+		// and - new event should have the start time of the previous short event
+		assert.Equal(t, shortEventStartTime, result.StartTime)
+		currentEvent, err := service.FindCurrentEvent(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, shortEventStartTime, currentEvent.StartTime)
+		assert.Equal(t, newEvent.PlanItem, currentEvent.PlanItem)
+	})
+
+	t.Run("should store short event when IgnoreShortEvents is false", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given - IgnoreShortEvents is false by default
+		shortEventStartTime := clock.Now().Add(-45 * time.Second)
+		shortEvent := CurrentEvent{
+			StartTime: shortEventStartTime,
+			PlanItem: PlanItem{
+				BudgetItemId:   100,
+				Name:           "Short event (should be stored)",
+				WeeklyDuration: time.Duration(30) * time.Minute,
+			},
+		}
+
+		newEvent := CurrentEvent{
+			StartTime: clock.Now(),
+			PlanItem: PlanItem{
+				BudgetItemId:   200,
+				Name:           "New event",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+		}
+
+		// when
+		clock.SetNow(shortEventStartTime)
+		service.StartNewEvent(ctx, shortEvent)
+		clock.SetNow(shortEventStartTime.Add(45 * time.Second)) // 45 seconds later (< 1 minute)
+		result, err := service.StartNewEvent(ctx, newEvent)
+		require.NoError(t, err)
+
+		// then - short event should be stored in calendar
+		calendarEvents, err := calendarStub.GetLastEvents(ctx, 1)
+		require.NoError(t, err)
+		assert.Len(t, calendarEvents, 1)
+		assert.Equal(t, "Short event (should be stored)", calendarEvents[0].Summary)
+		assert.Equal(t, shortEventStartTime, calendarEvents[0].StartTime)
+
+		// and - new event should have its own start time
+		assert.Equal(t, shortEventStartTime.Add(45*time.Second), result.StartTime)
+	})
+
+	t.Run("should store event when IgnoreShortEvents is true but event is longer than one minute", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given - enable IgnoreShortEvents setting
+		currentUser, _ := user.CurrentUser(ctx)
+		currentUser.Settings.IgnoreShortEvents = true
+		ctx = user.WithUser(context.Background(), currentUser)
+
+		longEventStartTime := clock.Now().Add(-90 * time.Second)
+		longEvent := CurrentEvent{
+			StartTime: longEventStartTime,
+			PlanItem: PlanItem{
+				BudgetItemId:   100,
+				Name:           "Long event (should be stored)",
+				WeeklyDuration: time.Duration(30) * time.Minute,
+			},
+		}
+
+		newEvent := CurrentEvent{
+			StartTime: clock.Now(),
+			PlanItem: PlanItem{
+				BudgetItemId:   200,
+				Name:           "New event",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+		}
+
+		// when
+		clock.SetNow(longEventStartTime)
+		service.StartNewEvent(ctx, longEvent)
+		clock.SetNow(longEventStartTime.Add(90 * time.Second)) // 90 seconds later (>= 1 minute)
+		result, err := service.StartNewEvent(ctx, newEvent)
+		require.NoError(t, err)
+
+		// then - long event should be stored in calendar
+		calendarEvents, err := calendarStub.GetLastEvents(ctx, 1)
+		require.NoError(t, err)
+		assert.Len(t, calendarEvents, 1)
+		assert.Equal(t, "Long event (should be stored)", calendarEvents[0].Summary)
+		assert.Equal(t, longEventStartTime, calendarEvents[0].StartTime)
+
+		// and - new event should have its own start time
+		assert.Equal(t, longEventStartTime.Add(90*time.Second), result.StartTime)
+	})
 }
 
 func TestModifyCurrentEventStartTime(t *testing.T) {

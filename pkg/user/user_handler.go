@@ -26,6 +26,7 @@ type SettingsDTO struct {
 	WeekStartDay      string                    `json:"weekStartDay"`
 	EventCalendarType EventCalendarType         `json:"eventCalendarType"`
 	GoogleCalendar    GoogleCalendarSettingsDTO `json:"googleCalendar"`
+	IgnoreShortEvents bool                      `json:"ignoreShortEvents"`
 }
 
 type GoogleCalendarSettingsDTO struct {
@@ -452,6 +453,7 @@ func settingsToDTO(settings Settings) SettingsDTO {
 		GoogleCalendar: GoogleCalendarSettingsDTO{
 			CalendarId: settings.GoogleCalendar.CalendarId,
 		},
+		IgnoreShortEvents: settings.IgnoreShortEvents,
 	}
 }
 
@@ -472,6 +474,7 @@ func dtoToSettings(settingsDTO SettingsDTO) Settings {
 		GoogleCalendar: GoogleCalendarSettings{
 			CalendarId: settingsDTO.GoogleCalendar.CalendarId,
 		},
+		IgnoreShortEvents: settingsDTO.IgnoreShortEvents,
 	}
 }
 
