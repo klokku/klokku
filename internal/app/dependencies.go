@@ -12,6 +12,7 @@ import (
 	"github.com/klokku/klokku/pkg/current_event"
 	"github.com/klokku/klokku/pkg/stats"
 	"github.com/klokku/klokku/pkg/user"
+	"github.com/klokku/klokku/pkg/webhook"
 	"github.com/klokku/klokku/pkg/weekly_plan"
 )
 
@@ -25,6 +26,10 @@ type Dependencies struct {
 	BudgetRepo        budget_plan.Repository
 	BudgetPlanService budget_plan.Service
 	BudgetPlanHandler *budget_plan.Handler
+
+	WebhookRepo    webhook.Repository
+	WebhookService webhook.Service
+	WebhookHandler *webhook.Handler
 
 	WeeklyPlanRepo    weekly_plan.Repository
 	WeeklyPlanService weekly_plan.Service
@@ -64,6 +69,7 @@ func BuildDependencies(db *pgxpool.Pool, cfg config.Application) *Dependencies {
 	deps.BudgetRepo = budget_plan.NewBudgetPlanRepo(db)
 	deps.BudgetPlanService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)
 	deps.BudgetPlanHandler = budget_plan.NewBudgetPlanHandler(deps.BudgetPlanService)
+
 	deps.WeeklyPlanRepo = weekly_plan.NewRepo(db)
 	deps.WeeklyPlanService = weekly_plan.NewService(deps.WeeklyPlanRepo, deps.BudgetPlanService, deps.EventBus)
 	deps.WeeklyPlanHandler = weekly_plan.NewHandler(deps.WeeklyPlanService)
@@ -77,6 +83,10 @@ func BuildDependencies(db *pgxpool.Pool, cfg config.Application) *Dependencies {
 	deps.CurrentEventRepo = current_event.NewEventRepo(db)
 	deps.CurrentEventService = current_event.NewEventService(deps.CurrentEventRepo, deps.CalendarProvider)
 	deps.CurrentEventHandler = current_event.NewEventHandler(deps.CurrentEventService)
+
+	deps.WebhookRepo = webhook.NewRepository(db)
+	deps.WebhookService = webhook.NewServiceWithAdapters(deps.WebhookRepo, deps.CurrentEventService, deps.BudgetPlanService, deps.UserService)
+	deps.WebhookHandler = webhook.NewHandler(deps.WebhookService)
 
 	deps.Clock = &utils.SystemClock{}
 	deps.StatsService = stats.NewService(deps.CurrentEventService, deps.WeeklyPlanService, deps.BudgetPlanService, deps.CalendarProvider)

@@ -27,6 +27,15 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}/position", deps.BudgetPlanHandler.SetItemPosition).Methods("PUT")
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.DeleteItem).Methods("DELETE")
 
+	// Webhook management (authenticated)
+	r.HandleFunc("/api/webhook", deps.WebhookHandler.CreateWebhook).Methods("POST")
+	r.HandleFunc("/api/webhook", deps.WebhookHandler.ListWebhooks).Methods("GET")
+	r.HandleFunc("/api/webhook/{id}/rotate", deps.WebhookHandler.RotateWebhookToken).Methods("POST")
+	r.HandleFunc("/api/webhook/{id}", deps.WebhookHandler.DeleteWebhook).Methods("DELETE")
+
+	// Webhook execution (no authentication required)
+	r.HandleFunc("/api/webhook/{token}", deps.WebhookHandler.HandleWebhook).Methods("POST")
+
 	// Weekly Plan item
 	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.GetPlan).Queries("date", "{date}").Methods("GET")
 	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.ResetWeek).Queries("date", "{date}").Methods("DELETE")
