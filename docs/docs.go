@@ -1848,6 +1848,158 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/webhook": {
+            "get": {
+                "description": "Get all webhooks for the current user filtered by type",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhook"
+                ],
+                "summary": "List user's webhooks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Webhook type",
+                        "name": "type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/webhook.WebhookDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            },
+            "post": {
+                "description": "Create a new webhook for a specific action",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhook"
+                ],
+                "summary": "Create a new webhook",
+                "parameters": [
+                    {
+                        "description": "Webhook creation request",
+                        "name": "webhook",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "data": {
+                                    "type": "object"
+                                },
+                                "type": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/webhook.WebhookDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            }
+        },
+        "/api/webhook/{id}": {
+            "delete": {
+                "description": "Delete a webhook by ID",
+                "tags": [
+                    "Webhook"
+                ],
+                "summary": "Delete a webhook",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Webhook ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Webhook not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            }
+        },
         "/api/weeklyplan": {
             "get": {
                 "description": "Retrieve all items for a specific week",
@@ -2060,6 +2212,51 @@ const docTemplate = `{
                         "XUserId": []
                     }
                 ]
+            }
+        },
+        "/webhook/{token}": {
+            "post": {
+                "description": "Execute a webhook action using the webhook token (no authentication required)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Webhook"
+                ],
+                "summary": "Handle incoming webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Webhook Token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Invalid webhook token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
             }
         }
     },
@@ -2410,6 +2607,9 @@ const docTemplate = `{
                 "googleCalendar": {
                     "$ref": "#/definitions/user.GoogleCalendarSettingsDTO"
                 },
+                "ignoreShortEvents": {
+                    "type": "boolean"
+                },
                 "timezone": {
                     "type": "string"
                 },
@@ -2437,6 +2637,35 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "webhook.WebhookDTO": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/webhook.WebhookType"
+                },
+                "webhookUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "webhook.WebhookType": {
+            "type": "string",
+            "enum": [
+                "START_CURRENT_EVENT"
+            ],
+            "x-enum-varnames": [
+                "TypeStartCurrentEvent"
+            ]
         },
         "weekly_plan.WeeklyPlanDTO": {
             "type": "object",

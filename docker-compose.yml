@@ -13,7 +13,7 @@ services:
       KLOKKU_DB_HOST: db
   db:
     image: postgres:18-alpine
-    container_name: postgres-db
+    container_name: klokku-postgres-db
     shm_size: 128mb
     restart: unless-stopped
     mem_limit: 256mb
