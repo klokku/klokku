@@ -25,7 +25,7 @@ type UserProvider interface {
 }
 
 type Service interface {
-	Create(ctx context.Context, webhookType WebhookType, data interface{}) (Webhook, string, error)
+	Create(ctx context.Context, webhookType WebhookType, data interface{}) (Webhook, error)
 	GetByUserIdAndType(ctx context.Context, webhookType WebhookType) ([]Webhook, error)
 	RotateToken(ctx context.Context, webhookId int) (string, error)
 	Delete(ctx context.Context, webhookId int) error
@@ -48,26 +48,16 @@ func NewService(repo Repository, eventStarter EventStarter, budgetService Budget
 	}
 }
 
-// NewServiceWithAdapters creates a new webhook service with adapters for full services
-func NewServiceWithAdapters(repo Repository, eventService current_event.Service, budgetService budget_plan.Service, userService user.Service) Service {
-	return &ServiceImpl{
-		repo:          repo,
-		eventStarter:  eventService,
-		budgetService: budgetService,
-		userService:   userService,
-	}
-}
-
-func (s *ServiceImpl) Create(ctx context.Context, webhookType WebhookType, data interface{}) (Webhook, string, error) {
+func (s *ServiceImpl) Create(ctx context.Context, webhookType WebhookType, data interface{}) (Webhook, error) {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
-		return Webhook{}, "", fmt.Errorf("failed to get current user: %w", err)
+		return Webhook{}, fmt.Errorf("failed to get current user: %w", err)
 	}
 
 	// Marshal data to JSON
 	dataJSON, err := json.Marshal(data)
 	if err != nil {
-		return Webhook{}, "", fmt.Errorf("failed to marshal webhook data: %w", err)
+		return Webhook{}, fmt.Errorf("failed to marshal webhook data: %w", err)
 	}
 
 	webhook := Webhook{
@@ -78,11 +68,10 @@ func (s *ServiceImpl) Create(ctx context.Context, webhookType WebhookType, data 
 
 	created, err := s.repo.Create(ctx, webhook)
 	if err != nil {
-		return Webhook{}, "", err
+		return Webhook{}, err
 	}
 
-	webhookURL := fmt.Sprintf("https://app.klokku.com/webhook/%s", created.Token)
-	return created, webhookURL, nil
+	return created, nil
 }
 
 func (s *ServiceImpl) GetByUserIdAndType(ctx context.Context, webhookType WebhookType) ([]Webhook, error) {

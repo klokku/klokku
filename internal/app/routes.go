@@ -30,7 +30,6 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	// Webhook management (authenticated)
 	r.HandleFunc("/api/webhook", deps.WebhookHandler.CreateWebhook).Methods("POST")
 	r.HandleFunc("/api/webhook", deps.WebhookHandler.ListWebhooks).Methods("GET")
-	r.HandleFunc("/api/webhook/{id}/rotate", deps.WebhookHandler.RotateWebhookToken).Methods("POST")
 	r.HandleFunc("/api/webhook/{id}", deps.WebhookHandler.DeleteWebhook).Methods("DELETE")
 
 	// Webhook execution (no authentication required)

@@ -3,6 +3,7 @@ package webhook
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,12 +12,21 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type WebhookDTO struct {
+	Id         int             `json:"id"`
+	Type       WebhookType     `json:"type"`
+	Token      string          `json:"token"`
+	WebhookUrl string          `json:"webhookUrl"`
+	Data       json.RawMessage `json:"data" swaggertype:"object"`
+}
 type Handler struct {
+	appHost string
 	service Service
 }
 
-func NewHandler(service Service) *Handler {
+func NewHandler(appHost string, service Service) *Handler {
 	return &Handler{
+		appHost: appHost,
 		service: service,
 	}
 }
@@ -76,7 +86,7 @@ func (h *Handler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 // @Accept json
 // @Produce json
 // @Param webhook body object{type=string,data=object} true "Webhook creation request"
-// @Success 201 {object} map[string]interface{}
+// @Success 201 {object} WebhookDTO
 // @Failure 400 {string} string "Bad Request"
 // @Failure 403 {string} string "User not found"
 // @Router /api/webhook [post]
@@ -100,20 +110,14 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	webhook, webhookURL, err := h.service.Create(r.Context(), request.Type, request.Data)
+	webhook, err := h.service.Create(r.Context(), request.Type, request.Data)
 	if err != nil {
 		log.Errorf("Failed to create webhook: %v", err)
 		http.Error(w, "Failed to create webhook", http.StatusInternalServerError)
 		return
 	}
 
-	response := map[string]interface{}{
-		"id":         webhook.Id,
-		"type":       webhook.Type,
-		"token":      webhook.Token,
-		"webhookUrl": webhookURL,
-		"createdAt":  webhook.CreatedAt.Format(time.RFC3339),
-	}
+	response := h.webhookToDTO(webhook)
 
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -128,7 +132,7 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 // @Tags Webhook
 // @Produce json
 // @Param type query string true "Webhook type"
-// @Success 200 {array} Webhook
+// @Success 200 {array} WebhookDTO
 // @Failure 400 {string} string "Bad Request"
 // @Failure 403 {string} string "User not found"
 // @Router /api/webhook [get]
@@ -149,57 +153,13 @@ func (h *Handler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(webhooks); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-// RotateWebhookToken godoc
-// @Summary Rotate webhook token
-// @Description Generate a new token for an existing webhook
-// @Tags Webhook
-// @Produce json
-// @Param id path int true "Webhook ID"
-// @Success 200 {object} map[string]interface{}
-// @Failure 400 {string} string "Bad Request"
-// @Failure 403 {string} string "User not found"
-// @Failure 404 {string} string "Webhook not found"
-// @Router /api/webhook/{id}/rotate [post]
-// @Security XUserId
-func (h *Handler) RotateWebhookToken(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	vars := mux.Vars(r)
-	webhookIdStr := vars["id"]
-	webhookId, err := strconv.Atoi(webhookIdStr)
-	if err != nil {
-		http.Error(w, "Invalid webhook ID", http.StatusBadRequest)
-		return
-	}
-
-	newToken, err := h.service.RotateToken(r.Context(), webhookId)
-	if err != nil {
-		if errors.Is(err, ErrWebhookNotFound) {
-			http.Error(w, "Webhook not found", http.StatusNotFound)
-			return
-		}
-		log.Errorf("Failed to rotate webhook token: %v", err)
-		http.Error(w, "Failed to rotate webhook token", http.StatusInternalServerError)
-		return
-	}
-
-	webhookURL := "https://app.klokku.com/webhook/" + newToken
-
-	response := map[string]interface{}{
-		"token":      newToken,
-		"webhookUrl": webhookURL,
-		"updatedAt":  time.Now().Format(time.RFC3339),
+	dtos := make([]WebhookDTO, len(webhooks))
+	for i := range webhooks {
+		dtos[i] = h.webhookToDTO(webhooks[i])
 	}
 
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := json.NewEncoder(w).Encode(dtos); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -237,4 +197,14 @@ func (h *Handler) DeleteWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) webhookToDTO(webhook Webhook) WebhookDTO {
+	return WebhookDTO{
+		Id:         webhook.Id,
+		Type:       webhook.Type,
+		Token:      webhook.Token,
+		WebhookUrl: fmt.Sprintf("%s/api/webhook/%s", h.appHost, webhook.Token),
+		Data:       webhook.Data,
+	}
 }
