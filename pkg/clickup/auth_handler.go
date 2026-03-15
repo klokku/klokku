@@ -139,8 +139,7 @@ func (g *ClickUpAuth) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Handle zero expiry time properly
 	var expiryTimestamp *int64
 	if !token.Expiry.IsZero() {
-		timestamp := token.Expiry.Unix()
-		expiryTimestamp = &timestamp
+		expiryTimestamp = new(token.Expiry.Unix())
 	}
 
 	_, err = g.db.Exec(r.Context(), "UPDATE clickup_auth SET access_token = $1, refresh_token = $2, expiry = $3 WHERE nonce = $4",
