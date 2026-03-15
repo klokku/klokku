@@ -293,16 +293,23 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 	testCases := []struct {
 		name           string
 		existingEvents []Event
+		initialEvent   Event
 		eventToModify  Event
 		want           []compareEvent
 	}{
 		{
 			name:           "No other events",
 			existingEvents: []Event{},
+			initialEvent: Event{
+				Summary:   "Initial event",
+				StartTime: start.Add(2 * time.Hour), // 12:00
+				EndTime:   start.Add(3 * time.Hour), // 13:00
+				Metadata:  EventMetadata{BudgetItemId: 101},
+			},
 			eventToModify: Event{
 				Summary:   "Modified event",
-				StartTime: start,
-				EndTime:   start.Add(time.Hour),
+				StartTime: start,                // 10:00
+				EndTime:   start.Add(time.Hour), // 11:00
 				Metadata:  EventMetadata{BudgetItemId: 101},
 			},
 			want: []compareEvent{
@@ -323,10 +330,16 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 					Metadata:  EventMetadata{BudgetItemId: 101},
 				},
 			},
+			initialEvent: Event{
+				Summary:   "Initial event",
+				StartTime: start.Add(2 * time.Hour), // 12:00
+				EndTime:   start.Add(3 * time.Hour), // 13:00
+				Metadata:  EventMetadata{BudgetItemId: 102},
+			},
 			eventToModify: Event{
 				Summary:   "Modified event",
-				StartTime: start.Add(-30 * time.Minute),
-				EndTime:   start.Add(time.Hour),
+				StartTime: start.Add(-30 * time.Minute), // 09:30
+				EndTime:   start.Add(time.Hour),         // 11:00
 				Metadata:  EventMetadata{BudgetItemId: 102},
 			},
 			want: []compareEvent{
@@ -351,6 +364,12 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 					EndTime:   start.Add(time.Hour).Add(30 * time.Minute), // 11:30
 					Metadata:  EventMetadata{BudgetItemId: 103},
 				},
+			},
+			initialEvent: Event{
+				Summary:   "Initial event",
+				StartTime: start.Add(-2 * time.Hour), // 08:00
+				EndTime:   start.Add(-1 * time.Hour), // 09:00
+				Metadata:  EventMetadata{BudgetItemId: 102},
 			},
 			eventToModify: Event{
 				Summary:   "Modified event",
@@ -393,6 +412,12 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 					Metadata:  EventMetadata{BudgetItemId: 103},
 				},
 			},
+			initialEvent: Event{
+				Summary:   "Initial event",
+				StartTime: start.Add(-2 * time.Hour), // 08:00 (same as first existing event)
+				EndTime:   start,                     // 10:00
+				Metadata:  EventMetadata{BudgetItemId: 101},
+			},
 			eventToModify: Event{
 				Summary:   "Modified event",
 				StartTime: start.Add(-1 * time.Hour), // 09:00
@@ -427,6 +452,12 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 					Metadata:  EventMetadata{BudgetItemId: 101},
 				},
 			},
+			initialEvent: Event{
+				Summary:   "Initial event",
+				StartTime: start.Add(3 * time.Hour), // 13:00
+				EndTime:   start.Add(4 * time.Hour), // 14:00
+				Metadata:  EventMetadata{BudgetItemId: 102},
+			},
 			eventToModify: Event{
 				Summary:   "Modified event",
 				StartTime: start,                    // 10:00
@@ -451,6 +482,52 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Modified event inside modified event after edit",
+			existingEvents: []Event{
+				{
+					Summary:   "Previous event should be shortened",
+					StartTime: start.Add(-time.Hour * 1), // 09:00
+					EndTime:   start,                     // 10:00
+					Metadata:  EventMetadata{BudgetItemId: 101},
+				},
+				{
+					Summary:   "Next event should be shortened",
+					StartTime: start.Add(time.Hour * 3), // 13:00
+					EndTime:   start.Add(time.Hour * 5), // 15:00
+					Metadata:  EventMetadata{BudgetItemId: 103},
+				},
+			},
+			initialEvent: Event{
+				Summary:   "Initial event",
+				StartTime: start,                    // 10:00
+				EndTime:   start.Add(time.Hour * 3), // 13:00
+				Metadata:  EventMetadata{BudgetItemId: 102},
+			},
+			eventToModify: Event{
+				Summary:   "Modified event",
+				StartTime: start.Add(-30 * time.Minute),                   // 09:30
+				EndTime:   start.Add(3 * time.Hour).Add(30 * time.Minute), // 13:30
+				Metadata:  EventMetadata{BudgetItemId: 102},
+			},
+			want: []compareEvent{
+				{
+					Summary:   "Test BudgetItem 1", // Previous event should be shortened
+					StartTime: start.Add(-1 * time.Hour),
+					EndTime:   start.Add(-30 * time.Minute),
+				},
+				{
+					Summary:   "Test BudgetItem 2", // Modified event
+					StartTime: start.Add(-30 * time.Minute),
+					EndTime:   start.Add(3 * time.Hour).Add(30 * time.Minute),
+				},
+				{
+					Summary:   "Test BudgetItem 3", // Next event should be shortened
+					StartTime: start.Add(3 * time.Hour).Add(30 * time.Minute),
+					EndTime:   start.Add(5 * time.Hour),
+				},
+			},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -463,11 +540,17 @@ func TestService_ModifyStickyEvent(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			// Create the event we will modify (with desired final times), capture UID
-			created, err := s.AddEvent(ctx, tc.eventToModify)
+			// Create the initial event at its starting position
+			created, err := s.AddStickyEvent(ctx, tc.initialEvent)
 			assert.NoError(t, err)
-			// Perform sticky modification using the created event (same times, has UID)
-			_, err = s.ModifyStickyEvent(ctx, created[0])
+
+			// Modify the event to the desired final position
+			eventToModify := created[0]
+			eventToModify.StartTime = tc.eventToModify.StartTime
+			eventToModify.EndTime = tc.eventToModify.EndTime
+
+			// Perform sticky modification
+			_, err = s.ModifyStickyEvent(ctx, eventToModify)
 			assert.NoError(t, err)
 
 			got, err := s.GetEvents(ctx, tc.eventToModify.StartTime, tc.eventToModify.EndTime)

@@ -318,6 +318,10 @@ func calculateStickyEventsChanges(overlappingEvents []Event, event Event) ([]Eve
 	eventsToCreate := make([]Event, 0, len(overlappingEvents))
 	if len(overlappingEvents) != 0 {
 		for _, overlappingEvent := range overlappingEvents {
+			if overlappingEvent.UID == event.UID {
+				// Skip the event being modified
+				continue
+			}
 			if overlappingEvent.StartTime.Before(event.StartTime) && overlappingEvent.EndTime.Before(event.EndTime) {
 				overlappingEvent.EndTime = event.StartTime
 				eventsToModify = append(eventsToModify, overlappingEvent)
