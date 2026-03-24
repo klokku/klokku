@@ -27,26 +27,15 @@ type WeeklyReportEntry struct {
 	TotalActualTime     time.Duration
 }
 
-// MonthlyReportEntry represents one 4-week period's data for all budget items.
-type MonthlyReportEntry struct {
-	PeriodNumber        int
-	StartDate           time.Time
-	EndDate             time.Time
-	WeekCount           int
-	Items               []ReportItem
-	TotalBudgetPlanTime time.Duration
-	TotalWeeklyPlanTime time.Duration
-	TotalActualTime     time.Duration
-}
-
-// SummaryReport holds the aggregated totals for the entire lifetime of a budget plan.
-type SummaryReport struct {
+// Report holds per-week breakdown and aggregated totals for a budget plan over a time period.
+type Report struct {
 	PlanId              int
 	PlanName            string
 	StartDate           time.Time
 	EndDate             time.Time
 	WeekCount           int
-	Items               []ReportItem
+	Weeks               []WeeklyReportEntry
+	TotalItems          []ReportItem
 	TotalBudgetPlanTime time.Duration
 	TotalWeeklyPlanTime time.Duration
 	TotalActualTime     time.Duration
