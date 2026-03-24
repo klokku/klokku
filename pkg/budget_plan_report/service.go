@@ -570,6 +570,7 @@ func computeDayOfWeekAverages(weeks []ItemWeekEntry, dailyDurations map[time.Tim
 		result = append(result, DayOfWeekEntry{
 			DayOfWeek:   wd,
 			AverageTime: avg,
+			TotalTime:   s.totalDuration,
 		})
 	}
 	return result

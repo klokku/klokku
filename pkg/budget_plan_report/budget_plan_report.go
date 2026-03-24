@@ -98,8 +98,9 @@ type ItemDayEntry struct {
 	DayOfWeek  time.Weekday
 }
 
-// DayOfWeekEntry holds the average time for a single day of the week.
+// DayOfWeekEntry holds the total and average time for a single day of the week.
 type DayOfWeekEntry struct {
 	DayOfWeek   time.Weekday
 	AverageTime time.Duration
+	TotalTime   time.Duration
 }

@@ -108,6 +108,7 @@ type ItemDayEntryDTO struct {
 type DayOfWeekEntryDTO struct {
 	DayOfWeek   int `json:"dayOfWeek"`
 	AverageTime int `json:"averageTime"`
+	TotalTime   int `json:"totalTime"`
 }
 
 type Handler struct {
@@ -322,6 +323,7 @@ func itemDetailReportToDTO(report ItemDetailReport) ItemDetailReportDTO {
 		dayOfWeekAvg = append(dayOfWeekAvg, DayOfWeekEntryDTO{
 			DayOfWeek:   int(d.DayOfWeek),
 			AverageTime: int(d.AverageTime.Seconds()),
+			TotalTime:   int(d.TotalTime.Seconds()),
 		})
 	}
 
