@@ -14,6 +14,8 @@ type ReportItem struct {
 	BudgetPlanTime time.Duration // from budget plan item WeeklyDuration
 	WeeklyPlanTime time.Duration // from weekly plan (or fallback to budget plan)
 	ActualTime     time.Duration // from calendar events
+	AveragePerWeek time.Duration // ActualTime / WeekCount (totals only)
+	AveragePerDay  time.Duration // ActualTime / (WeekCount * WeeklyOccurrences) (totals only)
 }
 
 // WeeklyReportEntry represents one week's data for all budget items.

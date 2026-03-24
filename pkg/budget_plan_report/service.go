@@ -209,8 +209,22 @@ func (s *ServiceImpl) GetReport(ctx context.Context, planId int, from *time.Time
 		totalActual += week.TotalActualTime
 	}
 
+	occurrencesById := make(map[int]int, len(bp.Items))
+	for _, bi := range bp.Items {
+		occurrencesById[bi.Id] = bi.WeeklyOccurrences
+	}
+
+	weekCount := len(weeks)
 	totalItems := make([]ReportItem, 0, len(itemTotals))
 	for _, ri := range itemTotals {
+		if weekCount > 0 {
+			ri.AveragePerWeek = ri.ActualTime / time.Duration(weekCount)
+			occ := occurrencesById[ri.BudgetItemId]
+			if occ == 0 {
+				occ = 7
+			}
+			ri.AveragePerDay = ri.ActualTime / time.Duration(weekCount*occ)
+		}
 		totalItems = append(totalItems, *ri)
 	}
 	sort.Slice(totalItems, func(i, j int) bool {

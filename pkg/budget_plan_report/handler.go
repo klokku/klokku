@@ -19,6 +19,8 @@ type ReportItemDTO struct {
 	BudgetPlanTime int    `json:"budgetPlanTime"`
 	WeeklyPlanTime int    `json:"weeklyPlanTime"`
 	ActualTime     int    `json:"actualTime"`
+	AveragePerWeek int    `json:"averagePerWeek"`
+	AveragePerDay  int    `json:"averagePerDay"`
 }
 
 type WeeklyReportEntryDTO struct {
@@ -164,6 +166,8 @@ func reportItemToDTO(item ReportItem) ReportItemDTO {
 		BudgetPlanTime: int(item.BudgetPlanTime.Seconds()),
 		WeeklyPlanTime: int(item.WeeklyPlanTime.Seconds()),
 		ActualTime:     int(item.ActualTime.Seconds()),
+		AveragePerWeek: int(item.AveragePerWeek.Seconds()),
+		AveragePerDay:  int(item.AveragePerDay.Seconds()),
 	}
 }
 

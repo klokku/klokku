@@ -99,22 +99,24 @@ func testBudgetPlan() budget_plan.BudgetPlan {
 		Name: "Test Plan",
 		Items: []budget_plan.BudgetItem{
 			{
-				Id:             10,
-				PlanId:         1,
-				Name:           "Exercise",
-				WeeklyDuration: 5 * time.Hour,
-				Icon:           "run",
-				Color:          "#ff0000",
-				Position:       100,
+				Id:                10,
+				PlanId:            1,
+				Name:              "Exercise",
+				WeeklyDuration:    5 * time.Hour,
+				WeeklyOccurrences: 5,
+				Icon:              "run",
+				Color:             "#ff0000",
+				Position:          100,
 			},
 			{
-				Id:             20,
-				PlanId:         1,
-				Name:           "Reading",
-				WeeklyDuration: 3 * time.Hour,
-				Icon:           "book",
-				Color:          "#00ff00",
-				Position:       200,
+				Id:                20,
+				PlanId:            1,
+				Name:              "Reading",
+				WeeklyDuration:    3 * time.Hour,
+				WeeklyOccurrences: 3,
+				Icon:              "book",
+				Color:             "#00ff00",
+				Position:          200,
 			},
 		},
 	}
@@ -329,13 +331,62 @@ func TestGetReport_AggregatesAcrossAllWeeks(t *testing.T) {
 	exercise := findReportItem(report.TotalItems, 10)
 	assert.Equal(t, 5*time.Hour, exercise.ActualTime)
 	assert.Equal(t, 10*time.Hour, exercise.BudgetPlanTime)
+	// AveragePerWeek: 5h / 2 weeks = 2.5h
+	assert.Equal(t, 2*time.Hour+30*time.Minute, exercise.AveragePerWeek)
+	// AveragePerDay: 5h / (2 weeks * 5 occurrences) = 5h / 10 = 30min
+	assert.Equal(t, 30*time.Minute, exercise.AveragePerDay)
 
 	reading := findReportItem(report.TotalItems, 20)
 	assert.Equal(t, 1*time.Hour, reading.ActualTime)
 	assert.Equal(t, 6*time.Hour, reading.BudgetPlanTime)
+	// AveragePerWeek: 1h / 2 weeks = 30min
+	assert.Equal(t, 30*time.Minute, reading.AveragePerWeek)
+	// AveragePerDay: 1h / (2 weeks * 3 occurrences) = 1h / 6 = 10min
+	assert.Equal(t, 10*time.Minute, reading.AveragePerDay)
 
 	assert.Equal(t, 16*time.Hour, report.TotalBudgetPlanTime)
 	assert.Equal(t, 6*time.Hour, report.TotalActualTime)
+}
+
+func TestGetReport_AveragePerDay_DefaultsTo7WhenOccurrencesNotSet(t *testing.T) {
+	ctx := testContext()
+	bp := budget_plan.BudgetPlan{
+		Id:   1,
+		Name: "Test Plan",
+		Items: []budget_plan.BudgetItem{
+			{
+				Id:                10,
+				PlanId:            1,
+				Name:              "Exercise",
+				WeeklyDuration:    5 * time.Hour,
+				WeeklyOccurrences: 0, // zero occurrences
+				Icon:              "run",
+				Color:             "#ff0000",
+				Position:          100,
+			},
+		},
+	}
+
+	weekMonday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	events := []calendar.Event{
+		makeEvent(10, weekMonday.Add(8*time.Hour), weekMonday.Add(10*time.Hour)),
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: weekMonday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(time.Date(2025, 3, 7, 12, 0, 0, 0, time.UTC)),
+	)
+
+	report, err := svc.GetReport(ctx, 1, nil, nil)
+	require.NoError(t, err)
+
+	exercise := findReportItem(report.TotalItems, 10)
+	assert.Equal(t, 2*time.Hour, exercise.AveragePerWeek)
+	// zero occurrences → defaults to 7: 2h / (1 week * 7) = ~17min
+	assert.Equal(t, 2*time.Hour/7, exercise.AveragePerDay)
 }
 
 func TestGetReport_WithDateRange(t *testing.T) {
