@@ -36,6 +36,7 @@ type Report struct {
 	StartDate           time.Time
 	EndDate             time.Time
 	WeekCount           int
+	ExcludedWeekCount   int // number of off-weeks within the period that were excluded
 	Weeks               []WeeklyReportEntry
 	TotalItems          []ReportItem
 	TotalBudgetPlanTime time.Duration

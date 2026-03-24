@@ -41,13 +41,14 @@ type ReportTotalsDTO struct {
 }
 
 type ReportDTO struct {
-	PlanId    int                    `json:"planId"`
-	PlanName  string                 `json:"planName"`
-	StartDate time.Time              `json:"startDate"`
-	EndDate   time.Time              `json:"endDate"`
-	WeekCount int                    `json:"weekCount"`
-	Weeks     []WeeklyReportEntryDTO `json:"weeks"`
-	Totals    ReportTotalsDTO        `json:"totals"`
+	PlanId            int                    `json:"planId"`
+	PlanName          string                 `json:"planName"`
+	StartDate         time.Time              `json:"startDate"`
+	EndDate           time.Time              `json:"endDate"`
+	WeekCount         int                    `json:"weekCount"`
+	ExcludedWeekCount int                    `json:"excludedWeekCount"`
+	Weeks             []WeeklyReportEntryDTO `json:"weeks"`
+	Totals            ReportTotalsDTO        `json:"totals"`
 }
 
 type Handler struct {
@@ -141,12 +142,13 @@ func reportToDTO(report Report) ReportDTO {
 	}
 
 	return ReportDTO{
-		PlanId:    report.PlanId,
-		PlanName:  report.PlanName,
-		StartDate: report.StartDate,
-		EndDate:   report.EndDate,
-		WeekCount: report.WeekCount,
-		Weeks:     weeks,
+		PlanId:            report.PlanId,
+		PlanName:          report.PlanName,
+		StartDate:         report.StartDate,
+		EndDate:           report.EndDate,
+		WeekCount:         report.WeekCount,
+		ExcludedWeekCount: report.ExcludedWeekCount,
+		Weeks:             weeks,
 		Totals: ReportTotalsDTO{
 			Items:               reportItemsToDTO(report.TotalItems),
 			TotalBudgetPlanTime: int(report.TotalBudgetPlanTime.Seconds()),

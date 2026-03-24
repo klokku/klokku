@@ -53,16 +53,23 @@ func (s *earliestEventFinderStub) GetEarliestEventTimeForBudgetItems(_ context.C
 
 type weeklyPlanItemsReaderStub struct {
 	itemsByWeek  map[string][]weekly_plan.WeeklyPlanItem
+	offWeeks     map[string]bool
 	defaultItems []weekly_plan.WeeklyPlanItem
 }
 
-func (s *weeklyPlanItemsReaderStub) GetItemsForWeek(_ context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error) {
+func (s *weeklyPlanItemsReaderStub) GetPlanForWeek(_ context.Context, date time.Time) (weekly_plan.WeeklyPlan, error) {
 	wn := weekly_plan.WeekNumberFromDate(date, time.Monday)
 	key := wn.String()
-	if items, ok := s.itemsByWeek[key]; ok {
-		return items, nil
+	isOff := s.offWeeks != nil && s.offWeeks[key]
+	items := s.defaultItems
+	if weekItems, ok := s.itemsByWeek[key]; ok {
+		items = weekItems
 	}
-	return s.defaultItems, nil
+	return weekly_plan.WeeklyPlan{
+		WeekNumber: wn,
+		IsOffWeek:  isOff,
+		Items:      items,
+	}, nil
 }
 
 // --- test helpers ---
@@ -430,6 +437,47 @@ func TestGetReport_WithDateRange(t *testing.T) {
 	assert.Equal(t, 2, report.WeekCount)
 	assert.Equal(t, 4*time.Hour, findReportItem(report.TotalItems, 10).ActualTime) // 3h + 1h
 	assert.Equal(t, 16*time.Hour, report.TotalBudgetPlanTime)                      // (5+3) × 2
+}
+
+func TestGetReport_OffWeeksExcluded(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	week1Monday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	week2Monday := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+	week3Monday := time.Date(2025, 3, 17, 0, 0, 0, 0, time.UTC)
+	clockTime := time.Date(2025, 3, 21, 12, 0, 0, 0, time.UTC)
+
+	events := []calendar.Event{
+		makeEvent(10, week1Monday.Add(8*time.Hour), week1Monday.Add(10*time.Hour)), // 2h week 1
+		makeEvent(10, week2Monday.Add(8*time.Hour), week2Monday.Add(11*time.Hour)), // 3h week 2 (off)
+		makeEvent(10, week3Monday.Add(8*time.Hour), week3Monday.Add(9*time.Hour)),  // 1h week 3
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: week1Monday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{
+			offWeeks: map[string]bool{"2025-W11": true}, // week 2 is an off-week
+		},
+		mockClock(clockTime),
+	)
+
+	report, err := svc.GetReport(ctx, 1, nil, nil)
+	require.NoError(t, err)
+
+	// Week 2 (W11) should be excluded
+	require.Len(t, report.Weeks, 2)
+	assert.Equal(t, "2025-W10", report.Weeks[0].WeekNumber)
+	assert.Equal(t, "2025-W12", report.Weeks[1].WeekNumber)
+
+	assert.Equal(t, 2, report.WeekCount)
+	assert.Equal(t, 1, report.ExcludedWeekCount)
+
+	// Totals should only cover weeks 1 and 3 (3h from week 2 excluded)
+	exercise := findReportItem(report.TotalItems, 10)
+	assert.Equal(t, 3*time.Hour, exercise.ActualTime) // 2h + 1h, not 3h from off-week
 }
 
 func TestGetReport_EmptyPlan(t *testing.T) {

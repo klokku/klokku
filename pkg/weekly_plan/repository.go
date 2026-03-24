@@ -25,6 +25,14 @@ type Repository interface {
 	createItems(ctx context.Context, userId int, items []WeeklyPlanItem) ([]WeeklyPlanItem, error)
 	// DeleteWeekItems deletes all weekly plan items for a given week.
 	DeleteWeekItems(ctx context.Context, userId int, weekNumber WeekNumber) (int, error)
+	// GetWeeklyPlan returns the weekly_plan record for the given week, or nil if none exists.
+	GetWeeklyPlan(ctx context.Context, userId int, weekNumber WeekNumber) (*WeeklyPlan, error)
+	// CreateWeeklyPlan inserts a new weekly_plan record with is_off_week=false.
+	CreateWeeklyPlan(ctx context.Context, userId int, budgetPlanId int, weekNumber WeekNumber) (WeeklyPlan, error)
+	// SetOffWeek upserts the weekly_plan record and sets is_off_week.
+	SetOffWeek(ctx context.Context, userId int, budgetPlanId int, weekNumber WeekNumber, isOffWeek bool) (WeeklyPlan, error)
+	// DeleteWeeklyPlan deletes the weekly_plan record for the given week (no-op if not found).
+	DeleteWeeklyPlan(ctx context.Context, userId int, weekNumber WeekNumber) error
 }
 
 type repositoryImpl struct {
@@ -341,4 +349,80 @@ func (r *repositoryImpl) DeleteWeekItems(ctx context.Context, userId int, weekNu
 		return 0, err
 	}
 	return int(result.RowsAffected()), nil
+}
+
+func (r *repositoryImpl) GetWeeklyPlan(ctx context.Context, userId int, weekNumber WeekNumber) (*WeeklyPlan, error) {
+	query := `SELECT id, budget_plan_id, week_number, is_off_week
+	          FROM weekly_plan
+	          WHERE user_id = $1 AND week_number = $2`
+	var wp WeeklyPlan
+	var weekNumberString string
+	err := r.getQueryer().QueryRow(ctx, query, userId, weekNumber.String()).Scan(
+		&wp.Id,
+		&wp.BudgetPlanId,
+		&weekNumberString,
+		&wp.IsOffWeek,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("could not get weekly plan: %w", err)
+	}
+	wp.WeekNumber, err = WeekNumberFromString(weekNumberString)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse week number: %w", err)
+	}
+	return &wp, nil
+}
+
+func (r *repositoryImpl) CreateWeeklyPlan(ctx context.Context, userId int, budgetPlanId int, weekNumber WeekNumber) (WeeklyPlan, error) {
+	query := `INSERT INTO weekly_plan (user_id, budget_plan_id, week_number, is_off_week)
+	          VALUES ($1, $2, $3, FALSE)
+	          RETURNING id, budget_plan_id, week_number, is_off_week`
+	var wp WeeklyPlan
+	var weekNumberString string
+	err := r.getQueryer().QueryRow(ctx, query, userId, budgetPlanId, weekNumber.String()).Scan(
+		&wp.Id,
+		&wp.BudgetPlanId,
+		&weekNumberString,
+		&wp.IsOffWeek,
+	)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("could not create weekly plan: %w", err)
+	}
+	wp.WeekNumber, err = WeekNumberFromString(weekNumberString)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("could not parse week number: %w", err)
+	}
+	return wp, nil
+}
+
+func (r *repositoryImpl) SetOffWeek(ctx context.Context, userId int, budgetPlanId int, weekNumber WeekNumber, isOffWeek bool) (WeeklyPlan, error) {
+	query := `INSERT INTO weekly_plan (user_id, budget_plan_id, week_number, is_off_week)
+	          VALUES ($1, $2, $3, $4)
+	          ON CONFLICT (user_id, week_number) DO UPDATE SET is_off_week = EXCLUDED.is_off_week
+	          RETURNING id, budget_plan_id, week_number, is_off_week`
+	var wp WeeklyPlan
+	var weekNumberString string
+	err := r.getQueryer().QueryRow(ctx, query, userId, budgetPlanId, weekNumber.String(), isOffWeek).Scan(
+		&wp.Id,
+		&wp.BudgetPlanId,
+		&weekNumberString,
+		&wp.IsOffWeek,
+	)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("could not set off week: %w", err)
+	}
+	wp.WeekNumber, err = WeekNumberFromString(weekNumberString)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("could not parse week number: %w", err)
+	}
+	return wp, nil
+}
+
+func (r *repositoryImpl) DeleteWeeklyPlan(ctx context.Context, userId int, weekNumber WeekNumber) error {
+	query := `DELETE FROM weekly_plan WHERE user_id = $1 AND week_number = $2`
+	_, err := r.getQueryer().Exec(ctx, query, userId, weekNumber.String())
+	return err
 }

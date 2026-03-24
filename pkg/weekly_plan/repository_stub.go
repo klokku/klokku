@@ -2,6 +2,7 @@ package weekly_plan
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -11,16 +12,24 @@ type RepositoryStub struct {
 	items          map[int]WeeklyPlanItem // id -> item
 	userIds        map[int]int            // id -> userId
 	nextId         int
+	weeklyPlans    map[string]WeeklyPlan // "userId:weekNumber" -> plan
+	nextPlanId     int
 	inTransaction  bool
 	transactionErr error
 }
 
 func NewRepositoryStub() *RepositoryStub {
 	return &RepositoryStub{
-		items:   make(map[int]WeeklyPlanItem),
-		userIds: make(map[int]int),
-		nextId:  1,
+		items:       make(map[int]WeeklyPlanItem),
+		userIds:     make(map[int]int),
+		nextId:      1,
+		weeklyPlans: make(map[string]WeeklyPlan),
+		nextPlanId:  1,
 	}
+}
+
+func weeklyPlanKey(userId int, weekNumber WeekNumber) string {
+	return fmt.Sprintf("%d:%s", userId, weekNumber.String())
 }
 
 func (r *RepositoryStub) WithTransaction(ctx context.Context, fn func(repo Repository) error) error {
@@ -37,6 +46,11 @@ func (r *RepositoryStub) WithTransaction(ctx context.Context, fn func(repo Repos
 		originalUserIds[k] = v
 	}
 	originalNextId := r.nextId
+	originalWeeklyPlans := make(map[string]WeeklyPlan, len(r.weeklyPlans))
+	for k, v := range r.weeklyPlans {
+		originalWeeklyPlans[k] = v
+	}
+	originalNextPlanId := r.nextPlanId
 
 	// Mark as in transaction
 	r.inTransaction = true
@@ -54,6 +68,8 @@ func (r *RepositoryStub) WithTransaction(ctx context.Context, fn func(repo Repos
 		r.items = originalItems
 		r.userIds = originalUserIds
 		r.nextId = originalNextId
+		r.weeklyPlans = originalWeeklyPlans
+		r.nextPlanId = originalNextPlanId
 		if err != nil {
 			return err
 		}
@@ -200,6 +216,61 @@ func (r *RepositoryStub) GetAllItems() []WeeklyPlanItem {
 	return result
 }
 
+func (r *RepositoryStub) GetWeeklyPlan(ctx context.Context, userId int, weekNumber WeekNumber) (*WeeklyPlan, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	key := weeklyPlanKey(userId, weekNumber)
+	if wp, ok := r.weeklyPlans[key]; ok {
+		return &wp, nil
+	}
+	return nil, nil
+}
+
+func (r *RepositoryStub) CreateWeeklyPlan(ctx context.Context, userId int, budgetPlanId int, weekNumber WeekNumber) (WeeklyPlan, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := weeklyPlanKey(userId, weekNumber)
+	wp := WeeklyPlan{
+		Id:           r.nextPlanId,
+		BudgetPlanId: budgetPlanId,
+		WeekNumber:   weekNumber,
+		IsOffWeek:    false,
+	}
+	r.weeklyPlans[key] = wp
+	r.nextPlanId++
+	return wp, nil
+}
+
+func (r *RepositoryStub) SetOffWeek(ctx context.Context, userId int, budgetPlanId int, weekNumber WeekNumber, isOffWeek bool) (WeeklyPlan, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := weeklyPlanKey(userId, weekNumber)
+	wp, ok := r.weeklyPlans[key]
+	if !ok {
+		wp = WeeklyPlan{
+			Id:           r.nextPlanId,
+			BudgetPlanId: budgetPlanId,
+			WeekNumber:   weekNumber,
+		}
+		r.nextPlanId++
+	}
+	wp.IsOffWeek = isOffWeek
+	r.weeklyPlans[key] = wp
+	return wp, nil
+}
+
+func (r *RepositoryStub) DeleteWeeklyPlan(ctx context.Context, userId int, weekNumber WeekNumber) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := weeklyPlanKey(userId, weekNumber)
+	delete(r.weeklyPlans, key)
+	return nil
+}
+
 // Helper method to reset the stub (useful between tests)
 func (r *RepositoryStub) Reset() {
 	r.mu.Lock()
@@ -208,6 +279,8 @@ func (r *RepositoryStub) Reset() {
 	r.items = make(map[int]WeeklyPlanItem)
 	r.userIds = make(map[int]int)
 	r.nextId = 1
+	r.weeklyPlans = make(map[string]WeeklyPlan)
+	r.nextPlanId = 1
 	r.inTransaction = false
 	r.transactionErr = nil
 }

@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+// WeeklyPlan represents the per-week plan record, holding week-level metadata.
+type WeeklyPlan struct {
+	Id           int
+	BudgetPlanId int
+	WeekNumber   WeekNumber
+	IsOffWeek    bool
+	Items        []WeeklyPlanItem
+}
+
 type WeeklyPlanItem struct {
 	Id           int
 	BudgetItemId int

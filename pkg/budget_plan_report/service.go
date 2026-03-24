@@ -30,7 +30,7 @@ type earliestEventFinder interface {
 }
 
 type weeklyPlanItemsReader interface {
-	GetItemsForWeek(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error)
+	GetPlanForWeek(ctx context.Context, date time.Time) (weekly_plan.WeeklyPlan, error)
 }
 
 type ServiceImpl struct {
@@ -129,13 +129,20 @@ func (s *ServiceImpl) GetReport(ctx context.Context, planId int, from *time.Time
 
 	// Build weekly entries
 	var weeks []WeeklyReportEntry
+	var excludedWeekCount int
 	for ws := rangeStart; !ws.After(rangeEnd); ws = ws.AddDate(0, 0, 7) {
 		we := ws.AddDate(0, 0, 7).Add(-time.Nanosecond)
 		weekNumber := weekly_plan.WeekNumberFromDate(ws, weekFirstDay)
 
-		weeklyPlanItems, err := s.weeklyPlanReader.GetItemsForWeek(ctx, ws)
-		if err != nil {
-			weeklyPlanItems = nil
+		weeklyPlan, err := s.weeklyPlanReader.GetPlanForWeek(ctx, ws)
+		if err == nil && weeklyPlan.IsOffWeek {
+			excludedWeekCount++
+			continue
+		}
+
+		var weeklyPlanItems []weekly_plan.WeeklyPlanItem
+		if err == nil {
+			weeklyPlanItems = weeklyPlan.Items
 		}
 		weeklyPlanMap := make(map[int]weekly_plan.WeeklyPlanItem, len(weeklyPlanItems))
 		for _, wpi := range weeklyPlanItems {
@@ -244,6 +251,7 @@ func (s *ServiceImpl) GetReport(ctx context.Context, planId int, from *time.Time
 		StartDate:           startDate,
 		EndDate:             endDate,
 		WeekCount:           len(weeks),
+		ExcludedWeekCount:   excludedWeekCount,
 		Weeks:               weeks,
 		TotalItems:          totalItems,
 		TotalBudgetPlanTime: totalBudget,

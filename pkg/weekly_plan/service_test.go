@@ -667,6 +667,116 @@ func TestServiceImpl_handleBudgetPlanItemUpdated(t *testing.T) {
 	})
 }
 
+func TestServiceImpl_SetOffWeek(t *testing.T) {
+	t.Run("marks a week as off and returns plan with flag set", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		weekDate := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
+
+		plan := budget_plan.BudgetPlan{
+			Id:        1,
+			Name:      "My Plan",
+			IsCurrent: true,
+			Items: []budget_plan.BudgetItem{
+				{Id: 101, PlanId: 1, Name: "Work", WeeklyDuration: 40 * time.Hour, WeeklyOccurrences: 5, Position: 0},
+			},
+		}
+		bpReaderStub.SetCurrentPlan(plan)
+		bpReaderStub.SetPlan(plan)
+
+		result, err := service.SetOffWeek(ctx, weekDate, true)
+
+		require.NoError(t, err)
+		assert.True(t, result.IsOffWeek)
+		assert.NotEmpty(t, result.Items)
+	})
+
+	t.Run("can unmark an off-week", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		weekDate := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
+
+		plan := budget_plan.BudgetPlan{
+			Id:        1,
+			Name:      "My Plan",
+			IsCurrent: true,
+			Items: []budget_plan.BudgetItem{
+				{Id: 101, PlanId: 1, Name: "Work", WeeklyDuration: 40 * time.Hour, WeeklyOccurrences: 5, Position: 0},
+			},
+		}
+		bpReaderStub.SetCurrentPlan(plan)
+		bpReaderStub.SetPlan(plan)
+
+		_, err := service.SetOffWeek(ctx, weekDate, true)
+		require.NoError(t, err)
+
+		result, err := service.SetOffWeek(ctx, weekDate, false)
+		require.NoError(t, err)
+		assert.False(t, result.IsOffWeek)
+	})
+}
+
+func TestServiceImpl_ResetWeekDeletesWeeklyPlan(t *testing.T) {
+	t.Run("deletes weekly_plan record when resetting a future week", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		futureDate := time.Now().AddDate(0, 0, 14)
+
+		plan := budget_plan.BudgetPlan{
+			Id:        1,
+			Name:      "My Plan",
+			IsCurrent: true,
+			Items: []budget_plan.BudgetItem{
+				{Id: 101, PlanId: 1, Name: "Work", WeeklyDuration: 40 * time.Hour, WeeklyOccurrences: 5},
+			},
+		}
+		bpReaderStub.SetCurrentPlan(plan)
+		bpReaderStub.SetPlan(plan)
+
+		_, err := service.SetOffWeek(ctx, futureDate, true)
+		require.NoError(t, err)
+
+		_, err = service.ResetWeekItemsToBudgetPlan(ctx, futureDate)
+		require.NoError(t, err)
+
+		// After reset, the plan should no longer be off
+		wp, err := service.GetPlanForWeek(ctx, futureDate)
+		require.NoError(t, err)
+		assert.False(t, wp.IsOffWeek)
+	})
+
+	t.Run("deletes weekly_plan record when resetting a current week", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		currentDate := time.Now()
+
+		plan := budget_plan.BudgetPlan{
+			Id:        1,
+			Name:      "My Plan",
+			IsCurrent: true,
+			Items: []budget_plan.BudgetItem{
+				{Id: 101, PlanId: 1, Name: "Work", WeeklyDuration: 40 * time.Hour, WeeklyOccurrences: 5, Position: 0},
+			},
+		}
+		bpReaderStub.SetCurrentPlan(plan)
+		bpReaderStub.SetPlan(plan)
+
+		_, err := service.SetOffWeek(ctx, currentDate, true)
+		require.NoError(t, err)
+
+		_, err = service.ResetWeekItemsToBudgetPlan(ctx, currentDate)
+		require.NoError(t, err)
+
+		wp, err := service.GetPlanForWeek(ctx, currentDate)
+		require.NoError(t, err)
+		assert.False(t, wp.IsOffWeek)
+	})
+}
+
 func TestServiceImpl_handleCalendarEventChanged(t *testing.T) {
 	t.Run("creates weekly items", func(t *testing.T) {
 		teardown := setup(t)

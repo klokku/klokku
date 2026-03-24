@@ -43,6 +43,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.ResetWeek).Queries("date", "{date}").Methods("DELETE")
 	r.HandleFunc("/api/weeklyplan/item", deps.WeeklyPlanHandler.UpdateItem).Queries("date", "{date}").Methods("PUT")
 	r.HandleFunc("/api/weeklyplan/item/{itemId}", deps.WeeklyPlanHandler.ResetItem).Methods("DELETE")
+	r.HandleFunc("/api/weeklyplan/off-week", deps.WeeklyPlanHandler.SetOffWeek).Queries("date", "{date}").Methods("PUT")
 
 	// Events
 	r.HandleFunc("/api/event", deps.CurrentEventHandler.StartEvent).Methods("POST")
