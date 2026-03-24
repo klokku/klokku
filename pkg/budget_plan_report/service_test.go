@@ -480,6 +480,340 @@ func TestGetReport_OffWeeksExcluded(t *testing.T) {
 	assert.Equal(t, 3*time.Hour, exercise.ActualTime) // 2h + 1h, not 3h from off-week
 }
 
+// --- GetItemReport tests ---
+
+func TestGetItemReport_BasicStats(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	weekMonday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	events := []calendar.Event{
+		makeEvent(10, weekMonday.Add(8*time.Hour), weekMonday.Add(10*time.Hour)),                          // Mon 2h
+		makeEvent(10, weekMonday.Add(24*time.Hour+8*time.Hour), weekMonday.Add(24*time.Hour+9*time.Hour)), // Tue 1h
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: weekMonday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(time.Date(2025, 3, 7, 12, 0, 0, 0, time.UTC)),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, report.PlanId)
+	assert.Equal(t, 10, report.ItemId)
+	assert.Equal(t, "Exercise", report.ItemName)
+	assert.Equal(t, "#ff0000", report.ItemColor)
+
+	assert.Equal(t, 3*time.Hour, report.TotalActualTime)
+	assert.Equal(t, 5*time.Hour, report.TotalBudgetPlanTime)
+	assert.Equal(t, 60.0, report.CompletionPercent)
+	assert.Equal(t, 2*time.Hour, report.RemainingTime)
+	assert.Equal(t, time.Duration(0), report.OverBudgetTime)
+
+	assert.Equal(t, 1, report.WeekCount)
+	assert.Equal(t, 2, report.ActiveDaysCount)
+	assert.Equal(t, 7, report.TotalDaysCount) // 1 week = 7 days
+}
+
+func TestGetItemReport_MultipleWeeks(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	week1Monday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	week2Monday := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+	clockTime := time.Date(2025, 3, 14, 12, 0, 0, 0, time.UTC)
+
+	events := []calendar.Event{
+		makeEvent(10, week1Monday.Add(8*time.Hour), week1Monday.Add(11*time.Hour)), // Mon W1: 3h
+		makeEvent(10, week2Monday.Add(8*time.Hour), week2Monday.Add(10*time.Hour)), // Mon W2: 2h
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: week1Monday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(clockTime),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	require.Len(t, report.Weeks, 2)
+	assert.Equal(t, "2025-W10", report.Weeks[0].WeekNumber)
+	assert.Equal(t, 3*time.Hour, report.Weeks[0].ActualTime)
+	assert.Equal(t, "2025-W11", report.Weeks[1].WeekNumber)
+	assert.Equal(t, 2*time.Hour, report.Weeks[1].ActualTime)
+	assert.False(t, report.Weeks[0].IsOffWeek)
+	assert.False(t, report.Weeks[1].IsOffWeek)
+
+	assert.Equal(t, 5*time.Hour, report.TotalActualTime)
+	assert.Equal(t, 10*time.Hour, report.TotalBudgetPlanTime) // 5h/week * 2 weeks
+	assert.Equal(t, 2, report.WeekCount)
+
+	// Average per week: 5h / 2 = 2.5h
+	assert.Equal(t, 2*time.Hour+30*time.Minute, report.AveragePerWeek)
+}
+
+func TestGetItemReport_OffWeeksIncluded(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	week1Monday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	week2Monday := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+	week3Monday := time.Date(2025, 3, 17, 0, 0, 0, 0, time.UTC)
+	clockTime := time.Date(2025, 3, 21, 12, 0, 0, 0, time.UTC)
+
+	events := []calendar.Event{
+		makeEvent(10, week1Monday.Add(8*time.Hour), week1Monday.Add(10*time.Hour)), // 2h week 1
+		makeEvent(10, week2Monday.Add(8*time.Hour), week2Monday.Add(11*time.Hour)), // 3h week 2 (off)
+		makeEvent(10, week3Monday.Add(8*time.Hour), week3Monday.Add(9*time.Hour)),  // 1h week 3
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: week1Monday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{
+			offWeeks: map[string]bool{"2025-W11": true},
+		},
+		mockClock(clockTime),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	// Off-weeks are included in the Weeks array (unlike summary report)
+	require.Len(t, report.Weeks, 3)
+	assert.Equal(t, "2025-W10", report.Weeks[0].WeekNumber)
+	assert.False(t, report.Weeks[0].IsOffWeek)
+	assert.Equal(t, 2*time.Hour, report.Weeks[0].ActualTime)
+
+	assert.Equal(t, "2025-W11", report.Weeks[1].WeekNumber)
+	assert.True(t, report.Weeks[1].IsOffWeek)
+	assert.Equal(t, time.Duration(0), report.Weeks[1].ActualTime) // zeroed even though events exist
+
+	assert.Equal(t, "2025-W12", report.Weeks[2].WeekNumber)
+	assert.False(t, report.Weeks[2].IsOffWeek)
+	assert.Equal(t, 1*time.Hour, report.Weeks[2].ActualTime)
+
+	// Totals exclude off-week events
+	assert.Equal(t, 3*time.Hour, report.TotalActualTime)      // 2h + 1h, NOT 3h from off-week
+	assert.Equal(t, 10*time.Hour, report.TotalBudgetPlanTime) // 5h * 2 active weeks
+	assert.Equal(t, 2, report.WeekCount)                      // 2 active weeks
+	assert.Equal(t, 1, report.ExcludedWeekCount)
+}
+
+func TestGetItemReport_DailyBreakdown(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	weekMonday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	events := []calendar.Event{
+		makeEvent(10, weekMonday.Add(8*time.Hour), weekMonday.Add(10*time.Hour)),                          // Mon 2h
+		makeEvent(10, weekMonday.Add(14*time.Hour), weekMonday.Add(15*time.Hour)),                         // Mon 1h (second event)
+		makeEvent(10, weekMonday.Add(24*time.Hour+8*time.Hour), weekMonday.Add(24*time.Hour+9*time.Hour)), // Tue 1h
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: weekMonday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(time.Date(2025, 3, 7, 12, 0, 0, 0, time.UTC)),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	require.Len(t, report.Days, 2)
+	// Days should be sorted by date
+	assert.Equal(t, time.Monday, report.Days[0].DayOfWeek)
+	assert.Equal(t, 3*time.Hour, report.Days[0].ActualTime) // 2h + 1h on Monday
+	assert.Equal(t, time.Tuesday, report.Days[1].DayOfWeek)
+	assert.Equal(t, 1*time.Hour, report.Days[1].ActualTime)
+}
+
+func TestGetItemReport_DayOfWeekAverages(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	week1Monday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	week2Monday := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+	clockTime := time.Date(2025, 3, 14, 12, 0, 0, 0, time.UTC)
+
+	events := []calendar.Event{
+		makeEvent(10, week1Monday.Add(8*time.Hour), week1Monday.Add(10*time.Hour)),                          // Mon W1: 2h
+		makeEvent(10, week2Monday.Add(8*time.Hour), week2Monday.Add(12*time.Hour)),                          // Mon W2: 4h
+		makeEvent(10, week1Monday.Add(24*time.Hour+8*time.Hour), week1Monday.Add(24*time.Hour+9*time.Hour)), // Tue W1: 1h
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: week1Monday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(clockTime),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	require.Len(t, report.DayOfWeekAvg, 7)
+	// Find Monday (weekday=1) - first entry since weekFirstDay=Monday
+	monAvg := report.DayOfWeekAvg[0]
+	assert.Equal(t, time.Monday, monAvg.DayOfWeek)
+	// Monday: (2h + 4h) / 2 Mondays = 3h
+	assert.Equal(t, 3*time.Hour, monAvg.AverageTime)
+
+	// Tuesday: 1h / 2 Tuesdays = 30min
+	tueAvg := report.DayOfWeekAvg[1]
+	assert.Equal(t, time.Tuesday, tueAvg.DayOfWeek)
+	assert.Equal(t, 30*time.Minute, tueAvg.AverageTime)
+}
+
+func TestGetItemReport_OverBudget(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	weekMonday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	events := []calendar.Event{
+		makeEvent(10, weekMonday.Add(8*time.Hour), weekMonday.Add(16*time.Hour)), // Mon 8h (over 5h budget)
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: weekMonday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(time.Date(2025, 3, 7, 12, 0, 0, 0, time.UTC)),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, 8*time.Hour, report.TotalActualTime)
+	assert.Equal(t, 5*time.Hour, report.TotalBudgetPlanTime)
+	assert.Equal(t, 160.0, report.CompletionPercent)
+	assert.Equal(t, time.Duration(0), report.RemainingTime)
+	assert.Equal(t, 3*time.Hour, report.OverBudgetTime)
+}
+
+func TestGetItemReport_Medians(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	week1Monday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	week2Monday := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+	week3Monday := time.Date(2025, 3, 17, 0, 0, 0, 0, time.UTC)
+	clockTime := time.Date(2025, 3, 21, 12, 0, 0, 0, time.UTC)
+
+	events := []calendar.Event{
+		makeEvent(10, week1Monday.Add(8*time.Hour), week1Monday.Add(9*time.Hour)),  // W1: 1h
+		makeEvent(10, week2Monday.Add(8*time.Hour), week2Monday.Add(11*time.Hour)), // W2: 3h
+		makeEvent(10, week3Monday.Add(8*time.Hour), week3Monday.Add(13*time.Hour)), // W3: 5h
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: week1Monday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(clockTime),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+
+	// Weekly values sorted: [1h, 3h, 5h] -> median = 3h
+	assert.Equal(t, 3*time.Hour, report.MedianPerWeek)
+
+	// Active day values sorted: [1h, 3h, 5h] -> median = 3h (3 active days)
+	assert.Equal(t, 3*time.Hour, report.MedianPerActiveDay)
+
+	// Per day: 21 days total, 3 with activity, 18 with 0 -> sorted: [0,0,...,0,1h,3h,5h]
+	// Median of 21 values = index 10 = 0
+	assert.Equal(t, time.Duration(0), report.MedianPerDay)
+}
+
+func TestGetItemReport_ItemNotInPlan(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{},
+		&earliestEventFinderStub{},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(time.Date(2025, 3, 7, 12, 0, 0, 0, time.UTC)),
+	)
+
+	_, err := svc.GetItemReport(ctx, 1, 999, nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestGetItemReport_WithDateRange(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	week1Monday := time.Date(2025, 3, 3, 0, 0, 0, 0, time.UTC)
+	week2Monday := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
+	week3Monday := time.Date(2025, 3, 17, 0, 0, 0, 0, time.UTC)
+	clockTime := time.Date(2025, 3, 21, 12, 0, 0, 0, time.UTC)
+
+	events := []calendar.Event{
+		makeEvent(10, week1Monday.Add(8*time.Hour), week1Monday.Add(10*time.Hour)), // 2h week 1
+		makeEvent(10, week2Monday.Add(8*time.Hour), week2Monday.Add(11*time.Hour)), // 3h week 2
+		makeEvent(10, week3Monday.Add(8*time.Hour), week3Monday.Add(9*time.Hour)),  // 1h week 3
+	}
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{events: events},
+		&earliestEventFinderStub{earliest: week1Monday.Add(8 * time.Hour), found: true},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(clockTime),
+	)
+
+	// Request only weeks 2 and 3
+	from := week2Monday
+	to := week3Monday.AddDate(0, 0, 6)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, &from, &to)
+	require.NoError(t, err)
+	require.Len(t, report.Weeks, 2)
+	assert.Equal(t, "2025-W11", report.Weeks[0].WeekNumber)
+	assert.Equal(t, "2025-W12", report.Weeks[1].WeekNumber)
+
+	assert.Equal(t, 4*time.Hour, report.TotalActualTime) // 3h + 1h
+	assert.Equal(t, 2, report.WeekCount)
+}
+
+func TestGetItemReport_NoEvents(t *testing.T) {
+	ctx := testContext()
+	bp := testBudgetPlan()
+
+	svc := NewService(
+		&budgetPlanReaderStub{plans: map[int]budget_plan.BudgetPlan{1: bp}},
+		&calendarEventsReaderStub{},
+		&earliestEventFinderStub{found: false},
+		&weeklyPlanItemsReaderStub{},
+		mockClock(time.Date(2025, 3, 7, 12, 0, 0, 0, time.UTC)),
+	)
+
+	report, err := svc.GetItemReport(ctx, 1, 10, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 10, report.ItemId)
+	assert.Equal(t, "Exercise", report.ItemName)
+	assert.Equal(t, 0, report.WeekCount)
+	assert.Empty(t, report.Weeks)
+}
+
 func TestGetReport_EmptyPlan(t *testing.T) {
 	ctx := testContext()
 	emptyPlan := budget_plan.BudgetPlan{Id: 1, Name: "Empty", Items: nil}

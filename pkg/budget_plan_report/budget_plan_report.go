@@ -43,3 +43,63 @@ type Report struct {
 	TotalWeeklyPlanTime time.Duration
 	TotalActualTime     time.Duration
 }
+
+// ItemDetailReport holds detailed statistics for a single budget item over a period.
+type ItemDetailReport struct {
+	PlanId    int
+	PlanName  string
+	ItemId    int
+	ItemName  string
+	ItemIcon  string
+	ItemColor string
+
+	StartDate time.Time
+	EndDate   time.Time
+
+	TotalActualTime     time.Duration
+	TotalBudgetPlanTime time.Duration
+	TotalWeeklyPlanTime time.Duration
+	CompletionPercent   float64
+	RemainingTime       time.Duration // max(0, budget - actual)
+	OverBudgetTime      time.Duration // max(0, actual - budget)
+
+	AveragePerDay       time.Duration
+	AveragePerActiveDay time.Duration
+	AveragePerWeek      time.Duration
+	MedianPerDay        time.Duration
+	MedianPerActiveDay  time.Duration
+	MedianPerWeek       time.Duration
+
+	ActiveDaysCount   int
+	TotalDaysCount    int
+	WeekCount         int
+	ExcludedWeekCount int
+
+	Weeks        []ItemWeekEntry
+	Days         []ItemDayEntry
+	DayOfWeekAvg []DayOfWeekEntry
+}
+
+// ItemWeekEntry is one week of data for a single budget item (including off-weeks).
+type ItemWeekEntry struct {
+	WeekNumber     string
+	StartDate      time.Time
+	EndDate        time.Time
+	BudgetPlanTime time.Duration
+	WeeklyPlanTime time.Duration
+	ActualTime     time.Duration
+	IsOffWeek      bool
+}
+
+// ItemDayEntry is one calendar day of tracked time for the heatmap.
+type ItemDayEntry struct {
+	Date       time.Time // truncated to midnight in user timezone
+	ActualTime time.Duration
+	DayOfWeek  time.Weekday
+}
+
+// DayOfWeekEntry holds the average time for a single day of the week.
+type DayOfWeekEntry struct {
+	DayOfWeek   time.Weekday
+	AverageTime time.Duration
+}

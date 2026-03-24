@@ -29,6 +29,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 
 	// Budget Plan Report
 	r.HandleFunc("/api/budgetplan/{planId}/report", deps.BudgetPlanReportHandler.GetReport).Methods("GET")
+	r.HandleFunc("/api/budgetplan/{planId}/report/item/{itemId}", deps.BudgetPlanReportHandler.GetItemReport).Methods("GET")
 
 	// Webhook management (authenticated)
 	r.HandleFunc("/api/webhook", deps.WebhookHandler.CreateWebhook).Methods("POST")
