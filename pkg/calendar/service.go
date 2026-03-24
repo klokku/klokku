@@ -355,6 +355,14 @@ func (s *Service) GetLastEvents(ctx context.Context, limit int) ([]Event, error)
 	return s.repo.GetLastEvents(ctx, userId, limit)
 }
 
+func (s *Service) GetEarliestEventTimeForBudgetItems(ctx context.Context, budgetItemIds []int) (time.Time, bool, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return s.repo.GetEarliestEventTimeForBudgetItems(ctx, userId, budgetItemIds)
+}
+
 func (s *Service) DeleteEvent(ctx context.Context, eventUid string) error {
 	userId, err := user.CurrentId(ctx)
 	if err != nil {

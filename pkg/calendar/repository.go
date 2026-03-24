@@ -20,6 +20,7 @@ type Repository interface {
 	GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error)
 	UpdateEvent(ctx context.Context, userId int, event Event) (Event, error)
 	DeleteEvent(ctx context.Context, userId int, eventId string) error
+	GetEarliestEventTimeForBudgetItems(ctx context.Context, userId int, budgetItemIds []int) (time.Time, bool, error)
 }
 type repositoryImpl struct {
 	db *pgxpool.Pool
@@ -160,6 +161,22 @@ func (r *repositoryImpl) GetLastEvents(ctx context.Context, userId int, limit in
 		events = append(events, event)
 	}
 	return events, nil
+}
+
+func (r *repositoryImpl) GetEarliestEventTimeForBudgetItems(ctx context.Context, userId int, budgetItemIds []int) (time.Time, bool, error) {
+	if len(budgetItemIds) == 0 {
+		return time.Time{}, false, nil
+	}
+	query := `SELECT MIN(start_time) FROM calendar_event WHERE user_id = $1 AND budget_item_id = ANY($2)`
+	var earliest *time.Time
+	err := r.getQueryer().QueryRow(ctx, query, userId, budgetItemIds).Scan(&earliest)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("could not query earliest event time: %w", err)
+	}
+	if earliest == nil {
+		return time.Time{}, false, nil
+	}
+	return *earliest, true, nil
 }
 
 func (r *repositoryImpl) UpdateEvent(ctx context.Context, userId int, event Event) (Event, error) {

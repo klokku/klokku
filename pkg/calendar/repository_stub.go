@@ -131,6 +131,28 @@ func (r *RepositoryStub) GetLastEvents(ctx context.Context, userId int, limit in
 	return result, nil
 }
 
+func (r *RepositoryStub) GetEarliestEventTimeForBudgetItems(ctx context.Context, userId int, budgetItemIds []int) (time.Time, bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	idSet := make(map[int]bool, len(budgetItemIds))
+	for _, id := range budgetItemIds {
+		idSet[id] = true
+	}
+
+	var earliest time.Time
+	found := false
+	for uid, event := range r.items {
+		if r.userIds[uid] == userId && idSet[event.Metadata.BudgetItemId] {
+			if !found || event.StartTime.Before(earliest) {
+				earliest = event.StartTime
+				found = true
+			}
+		}
+	}
+	return earliest, found, nil
+}
+
 func (r *RepositoryStub) UpdateEvent(ctx context.Context, userId int, event Event) (Event, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
