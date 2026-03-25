@@ -84,9 +84,10 @@ type ItemDetailReportDTO struct {
 	WeekCount         int `json:"weekCount"`
 	ExcludedWeekCount int `json:"excludedWeekCount"`
 
-	Weeks        []ItemWeekEntryDTO  `json:"weeks"`
-	Days         []ItemDayEntryDTO   `json:"days"`
-	DayOfWeekAvg []DayOfWeekEntryDTO `json:"dayOfWeekAvg"`
+	Weeks         []ItemWeekEntryDTO      `json:"weeks"`
+	Days          []ItemDayEntryDTO       `json:"days"`
+	DayOfWeekAvg  []DayOfWeekEntryDTO     `json:"dayOfWeekAvg"`
+	HourlyHeatmap []HourlyHeatmapEntryDTO `json:"hourlyHeatmap"`
 }
 
 type ItemWeekEntryDTO struct {
@@ -109,6 +110,12 @@ type DayOfWeekEntryDTO struct {
 	DayOfWeek   int `json:"dayOfWeek"`
 	AverageTime int `json:"averageTime"`
 	TotalTime   int `json:"totalTime"`
+}
+
+type HourlyHeatmapEntryDTO struct {
+	DayOfWeek int `json:"dayOfWeek"`
+	Hour      int `json:"hour"`
+	Count     int `json:"count"`
 }
 
 type Handler struct {
@@ -327,6 +334,15 @@ func itemDetailReportToDTO(report ItemDetailReport) ItemDetailReportDTO {
 		})
 	}
 
+	hourlyHeatmap := make([]HourlyHeatmapEntryDTO, 0, len(report.HourlyHeatmap))
+	for _, h := range report.HourlyHeatmap {
+		hourlyHeatmap = append(hourlyHeatmap, HourlyHeatmapEntryDTO{
+			DayOfWeek: h.DayOfWeek,
+			Hour:      h.Hour,
+			Count:     h.Count,
+		})
+	}
+
 	return ItemDetailReportDTO{
 		PlanId:              report.PlanId,
 		PlanName:            report.PlanName,
@@ -355,5 +371,6 @@ func itemDetailReportToDTO(report ItemDetailReport) ItemDetailReportDTO {
 		Weeks:               weeks,
 		Days:                days,
 		DayOfWeekAvg:        dayOfWeekAvg,
+		HourlyHeatmap:       hourlyHeatmap,
 	}
 }

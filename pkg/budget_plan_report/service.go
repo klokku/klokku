@@ -495,6 +495,9 @@ func (s *ServiceImpl) GetItemReport(ctx context.Context, planId int, itemId int,
 	// Day-of-week averages
 	dayOfWeekAvg := computeDayOfWeekAverages(weeks, dailyDurations, weekFirstDay, rangeStart, rangeEnd)
 
+	// Hourly heatmap
+	hourlyHeatmap := computeHourlyHeatmap(itemEvents, offWeekStarts, weekFirstDay, userTimezone)
+
 	startDate := rangeStart
 	endDate := rangeEnd
 	if len(weeks) > 0 {
@@ -530,7 +533,59 @@ func (s *ServiceImpl) GetItemReport(ctx context.Context, planId int, itemId int,
 		Weeks:               weeks,
 		Days:                days,
 		DayOfWeekAvg:        dayOfWeekAvg,
+		HourlyHeatmap:       hourlyHeatmap,
 	}, nil
+}
+
+func computeHourlyHeatmap(itemEvents []calendar.Event, offWeekStarts map[time.Time]bool, weekFirstDay time.Weekday, userTimezone *time.Location) []HourlyHeatmapEntry {
+	// counts[dayOfWeek][hour] = number of distinct days with activity in that slot
+	var counts [7][24]int
+	// Track which (date, hour) pairs we've already counted to deduplicate
+	// multiple events on the same calendar day and hour.
+	type dateHour struct {
+		date time.Time // truncated to midnight
+		hour int
+	}
+	seen := make(map[dateHour]bool)
+
+	for _, e := range itemEvents {
+		startTz := e.StartTime.In(userTimezone)
+		endTz := e.EndTime.In(userTimezone)
+
+		// Skip events in off-weeks (based on start time)
+		ws := weekStart(startTz, weekFirstDay)
+		if offWeekStarts[ws] {
+			continue
+		}
+
+		// For each hour the event overlaps, count the day once
+		cursor := time.Date(startTz.Year(), startTz.Month(), startTz.Day(), startTz.Hour(), 0, 0, 0, userTimezone)
+		for cursor.Before(endTz) {
+			midnight := time.Date(cursor.Year(), cursor.Month(), cursor.Day(), 0, 0, 0, 0, userTimezone)
+			key := dateHour{date: midnight, hour: cursor.Hour()}
+			if !seen[key] {
+				seen[key] = true
+				dow := int(cursor.Weekday())
+				counts[dow][cursor.Hour()]++
+			}
+			cursor = cursor.Add(time.Hour)
+		}
+	}
+
+	// Build result with only non-zero entries
+	var result []HourlyHeatmapEntry
+	for dow := 0; dow < 7; dow++ {
+		for hour := 0; hour < 24; hour++ {
+			if counts[dow][hour] > 0 {
+				result = append(result, HourlyHeatmapEntry{
+					DayOfWeek: dow,
+					Hour:      hour,
+					Count:     counts[dow][hour],
+				})
+			}
+		}
+	}
+	return result
 }
 
 func computeDayOfWeekAverages(weeks []ItemWeekEntry, dailyDurations map[time.Time]time.Duration, weekFirstDay time.Weekday, rangeStart, rangeEnd time.Time) []DayOfWeekEntry {

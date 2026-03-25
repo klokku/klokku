@@ -75,9 +75,10 @@ type ItemDetailReport struct {
 	WeekCount         int
 	ExcludedWeekCount int
 
-	Weeks        []ItemWeekEntry
-	Days         []ItemDayEntry
-	DayOfWeekAvg []DayOfWeekEntry
+	Weeks         []ItemWeekEntry
+	Days          []ItemDayEntry
+	DayOfWeekAvg  []DayOfWeekEntry
+	HourlyHeatmap []HourlyHeatmapEntry
 }
 
 // ItemWeekEntry is one week of data for a single budget item (including off-weeks).
@@ -103,4 +104,11 @@ type DayOfWeekEntry struct {
 	DayOfWeek   time.Weekday
 	AverageTime time.Duration
 	TotalTime   time.Duration
+}
+
+// HourlyHeatmapEntry holds the event count for a specific day-of-week and hour combination.
+type HourlyHeatmapEntry struct {
+	DayOfWeek int // 0=Sunday, 6=Saturday
+	Hour      int // 0-23
+	Count     int // number of events active during this day+hour
 }
