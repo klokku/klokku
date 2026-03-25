@@ -13,6 +13,7 @@ import (
 
 type WeeklyPlanDTO struct {
 	BudgetPlanId int                 `json:"budgetPlanId"`
+	IsOffWeek    bool                `json:"isOffWeek"`
 	Items        []WeeklyPlanItemDTO `json:"items"`
 }
 
@@ -66,7 +67,7 @@ func (h *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	items, err := h.service.GetItemsForWeek(r.Context(), weekDate)
+	plan, err := h.service.GetPlanForWeek(r.Context(), weekDate)
 	if err != nil {
 		if errors.Is(err, ErrNoCurrentPlan) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -76,13 +77,11 @@ func (h *Handler) GetPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var budgetPlanId int
-	itemsDTO := make([]WeeklyPlanItemDTO, 0, len(items))
-	for _, item := range items {
+	itemsDTO := make([]WeeklyPlanItemDTO, 0, len(plan.Items))
+	for _, item := range plan.Items {
 		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
-		budgetPlanId = item.BudgetPlanId
 	}
-	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{budgetPlanId, itemsDTO}); err != nil {
+	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{plan.BudgetPlanId, plan.IsOffWeek, itemsDTO}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -244,7 +243,65 @@ func (h *Handler) ResetWeek(w http.ResponseWriter, r *http.Request) {
 		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
 		budgetPlanId = item.BudgetPlanId
 	}
-	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{budgetPlanId, itemsDTO}); err != nil {
+	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{budgetPlanId, false, itemsDTO}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// SetOffWeek godoc
+// @Summary Set off-week flag
+// @Description Mark or unmark a week as an off-week. Off-weeks are excluded from budget plan reports.
+// @Tags WeeklyPlan
+// @Accept json
+// @Produce json
+// @Param date query string true "Date in RFC3339 format (can be any day of the week)"
+// @Param body body object{isOffWeek=bool} true "Off-week flag"
+// @Success 200 {object} WeeklyPlanDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/weeklyplan/off-week [put]
+// @Security XUserId
+func (h *Handler) SetOffWeek(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	weekDateString := r.URL.Query().Get("date")
+	weekDate, err := time.Parse(time.RFC3339, weekDateString)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(rest.ErrorResponse{
+			Error:   "Incorrect date format",
+			Details: "Date must be in RFC3339 format",
+		})
+		return
+	}
+
+	var body struct {
+		IsOffWeek bool `json:"isOffWeek"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(rest.ErrorResponse{
+			Error: "Invalid request body format",
+		})
+		return
+	}
+
+	plan, err := h.service.SetOffWeek(r.Context(), weekDate, body.IsOffWeek)
+	if err != nil {
+		if errors.Is(err, ErrNoCurrentPlan) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	itemsDTO := make([]WeeklyPlanItemDTO, 0, len(plan.Items))
+	for _, item := range plan.Items {
+		itemsDTO = append(itemsDTO, WeeklyPlanItemToDTO(item))
+	}
+	if err := json.NewEncoder(w).Encode(WeeklyPlanDTO{plan.BudgetPlanId, plan.IsOffWeek, itemsDTO}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

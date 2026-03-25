@@ -19,10 +19,12 @@ var ErrWeeklyItemNotFound = fmt.Errorf("weekly item not found")
 
 type Service interface {
 	GetItemsForWeek(ctx context.Context, date time.Time) ([]WeeklyPlanItem, error)
+	GetPlanForWeek(ctx context.Context, date time.Time) (WeeklyPlan, error)
 	UpdateItem(ctx context.Context, weekDate time.Time, id int, budgetItemId int, weeklyDuration time.Duration, notes string) (WeeklyPlanItem, error)
 	// ResetWeekItemToBudgetPlanItem resets the specified weekly plan item to the value of the budget plan item it was created from.
 	ResetWeekItemToBudgetPlanItem(ctx context.Context, id int) (WeeklyPlanItem, error)
 	ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate time.Time) ([]WeeklyPlanItem, error)
+	SetOffWeek(ctx context.Context, weekDate time.Time, isOffWeek bool) (WeeklyPlan, error)
 }
 
 type BudgetPlanReader interface {
@@ -72,33 +74,113 @@ func NewService(repo Repository, bpReader BudgetPlanReader, eventBus *event_bus.
 }
 
 func (s *ServiceImpl) GetItemsForWeek(ctx context.Context, date time.Time) ([]WeeklyPlanItem, error) {
+	plan, err := s.GetPlanForWeek(ctx, date)
+	if err != nil {
+		return nil, err
+	}
+	return plan.Items, nil
+}
+
+func (s *ServiceImpl) GetPlanForWeek(ctx context.Context, date time.Time) (WeeklyPlan, error) {
 	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current user: %w", err)
+		return WeeklyPlan{}, fmt.Errorf("failed to get current user: %w", err)
 	}
 
 	weekNumber := WeekNumberFromDate(date, currentUser.Settings.WeekFirstDay)
+
+	wp, err := s.repo.GetWeeklyPlan(ctx, currentUser.Id, weekNumber)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("failed to get weekly plan: %w", err)
+	}
+
 	items, err := s.repo.GetItemsForWeek(ctx, currentUser.Id, weekNumber)
 	if err != nil {
 		log.Errorf("failed to get weekly plan items for week %s: %v", weekNumber, err)
-		return nil, fmt.Errorf("failed to get weekly plan items: %w", err)
-	}
-	if len(items) > 0 {
-		return items, nil
+		return WeeklyPlan{}, fmt.Errorf("failed to get weekly plan items: %w", err)
 	}
 
+	if len(items) > 0 {
+		result := WeeklyPlan{
+			WeekNumber:   weekNumber,
+			BudgetPlanId: items[0].BudgetPlanId, // fallback for weeks without a weekly_plan record
+		}
+		if wp != nil {
+			result.Id = wp.Id
+			result.BudgetPlanId = wp.BudgetPlanId
+			result.IsOffWeek = wp.IsOffWeek
+		}
+		result.Items = items
+		return result, nil
+	}
+
+	// No items in DB — synthesize from current budget plan
 	currentPlan, err := s.bpReader.GetCurrentPlan(ctx)
 	if err != nil {
 		if errors.Is(err, budget_plan.ErrPlanNotFound) {
-			return nil, ErrNoCurrentPlan
+			return WeeklyPlan{}, ErrNoCurrentPlan
 		}
-		return nil, err
+		return WeeklyPlan{}, err
 	}
+	synthesized := make([]WeeklyPlanItem, 0, len(currentPlan.Items))
 	for _, bpItem := range currentPlan.Items {
-		items = append(items, budgetPlanItemToWeekPlanItem(bpItem, weekNumber))
+		synthesized = append(synthesized, budgetPlanItemToWeekPlanItem(bpItem, weekNumber))
+	}
+	return WeeklyPlan{
+		WeekNumber:   weekNumber,
+		BudgetPlanId: currentPlan.Id,
+		IsOffWeek:    false,
+		Items:        synthesized,
+	}, nil
+}
+
+func (s *ServiceImpl) SetOffWeek(ctx context.Context, weekDate time.Time, isOffWeek bool) (WeeklyPlan, error) {
+	currentUser, err := user.CurrentUser(ctx)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("failed to get current user: %w", err)
 	}
 
-	return items, nil
+	weekNumber := WeekNumberFromDate(weekDate, currentUser.Settings.WeekFirstDay)
+
+	// Ensure items exist so we have a budgetPlanId to use
+	existingItems, err := s.repo.GetItemsForWeek(ctx, currentUser.Id, weekNumber)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("failed to get weekly plan items: %w", err)
+	}
+
+	var budgetPlanId int
+	if len(existingItems) == 0 {
+		currentPlan, err := s.bpReader.GetCurrentPlan(ctx)
+		if err != nil {
+			if errors.Is(err, budget_plan.ErrPlanNotFound) {
+				return WeeklyPlan{}, ErrNoCurrentPlan
+			}
+			return WeeklyPlan{}, err
+		}
+		err = s.repo.WithTransaction(ctx, func(repo Repository) error {
+			transactionalService := ServiceImpl{repo, s.bpReader, nil}
+			_, err = transactionalService.createItemsFromBudgetPlan(ctx, currentPlan.Id, weekNumber)
+			return err
+		})
+		if err != nil {
+			return WeeklyPlan{}, fmt.Errorf("failed to create weekly plan items: %w", err)
+		}
+		budgetPlanId = currentPlan.Id
+	} else {
+		budgetPlanId = existingItems[0].BudgetPlanId
+	}
+
+	wp, err := s.repo.SetOffWeek(ctx, currentUser.Id, budgetPlanId, weekNumber, isOffWeek)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("failed to set off week: %w", err)
+	}
+
+	items, err := s.repo.GetItemsForWeek(ctx, currentUser.Id, weekNumber)
+	if err != nil {
+		return WeeklyPlan{}, fmt.Errorf("failed to get weekly plan items: %w", err)
+	}
+	wp.Items = items
+	return wp, nil
 }
 
 func (s *ServiceImpl) UpdateItem(
@@ -180,8 +262,11 @@ func (s *ServiceImpl) createItemsFromBudgetPlan(ctx context.Context, budgetPlanI
 	if err != nil {
 		return nil, fmt.Errorf("failed to create weekly plan items: %w", err)
 	}
+	_, err = s.repo.CreateWeeklyPlan(ctx, userId, budgetPlanId, week)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create weekly plan record: %w", err)
+	}
 	return createdItems, nil
-
 }
 
 func (s *ServiceImpl) ResetWeekItemToBudgetPlanItem(ctx context.Context, id int) (WeeklyPlanItem, error) {
@@ -222,11 +307,16 @@ func (s *ServiceImpl) ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate t
 
 	week := WeekNumberFromDate(weekDate, currentUser.Settings.WeekFirstDay)
 	currentWeek := WeekNumberFromDate(time.Now(), currentUser.Settings.WeekFirstDay)
-	// For future weeks simply delete all weekly plan items
+	// For future weeks simply delete all weekly plan items and the weekly plan record
 	if week.After(currentWeek) {
-		_, err := s.repo.DeleteWeekItems(ctx, currentUser.Id, week)
+		err = s.repo.WithTransaction(ctx, func(repo Repository) error {
+			if _, err := repo.DeleteWeekItems(ctx, currentUser.Id, week); err != nil {
+				return fmt.Errorf("failed to delete weekly plan items: %w", err)
+			}
+			return repo.DeleteWeeklyPlan(ctx, currentUser.Id, week)
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to reset weekly plan items: %w", err)
+			return nil, fmt.Errorf("failed to reset weekly plan: %w", err)
 		}
 		items, err := s.GetItemsForWeek(ctx, weekDate)
 		if err != nil {
@@ -235,7 +325,8 @@ func (s *ServiceImpl) ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate t
 		return items, nil
 	}
 
-	// For past and current weeks only restore the items' WeeklyDuration and remove notes
+	// For past and current weeks only restore the items' WeeklyDuration and remove notes,
+	// and delete the weekly plan record (clears IsOffWeek)
 	items, err := s.GetItemsForWeek(ctx, weekDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get weekly plan items before reset: %w", err)
@@ -254,7 +345,7 @@ func (s *ServiceImpl) ResetWeekItemsToBudgetPlan(ctx context.Context, weekDate t
 			}
 			resetItems = append(resetItems, updatedItem)
 		}
-		return nil
+		return repo.DeleteWeeklyPlan(ctx, currentUser.Id, week)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to reset weekly plan items: %w", err)

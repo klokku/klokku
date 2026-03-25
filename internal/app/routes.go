@@ -27,6 +27,10 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}/position", deps.BudgetPlanHandler.SetItemPosition).Methods("PUT")
 	r.HandleFunc("/api/budgetplan/{planId}/item/{itemId}", deps.BudgetPlanHandler.DeleteItem).Methods("DELETE")
 
+	// Budget Plan Report
+	r.HandleFunc("/api/budgetplan/{planId}/report", deps.BudgetPlanReportHandler.GetReport).Methods("GET")
+	r.HandleFunc("/api/budgetplan/{planId}/report/item/{itemId}", deps.BudgetPlanReportHandler.GetItemReport).Methods("GET")
+
 	// Webhook management (authenticated)
 	r.HandleFunc("/api/webhook", deps.WebhookHandler.CreateWebhook).Methods("POST")
 	r.HandleFunc("/api/webhook", deps.WebhookHandler.ListWebhooks).Methods("GET")
@@ -40,6 +44,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/weeklyplan", deps.WeeklyPlanHandler.ResetWeek).Queries("date", "{date}").Methods("DELETE")
 	r.HandleFunc("/api/weeklyplan/item", deps.WeeklyPlanHandler.UpdateItem).Queries("date", "{date}").Methods("PUT")
 	r.HandleFunc("/api/weeklyplan/item/{itemId}", deps.WeeklyPlanHandler.ResetItem).Methods("DELETE")
+	r.HandleFunc("/api/weeklyplan/off-week", deps.WeeklyPlanHandler.SetOffWeek).Queries("date", "{date}").Methods("PUT")
 
 	// Events
 	r.HandleFunc("/api/event", deps.CurrentEventHandler.StartEvent).Methods("POST")

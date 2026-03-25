@@ -6,6 +6,7 @@ import (
 	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/internal/utils"
 	"github.com/klokku/klokku/pkg/budget_plan"
+	"github.com/klokku/klokku/pkg/budget_plan_report"
 	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/klokku/klokku/pkg/calendar_provider"
 	"github.com/klokku/klokku/pkg/clickup"
@@ -47,6 +48,9 @@ type Dependencies struct {
 
 	StatsService stats.StatsService
 	StatsHandler *stats.StatsHandler
+
+	BudgetPlanReportService budget_plan_report.Service
+	BudgetPlanReportHandler *budget_plan_report.Handler
 
 	ClickUpAuth    *clickup.ClickUpAuth
 	ClickUpClient  clickup.Client
@@ -91,6 +95,15 @@ func BuildDependencies(db *pgxpool.Pool, cfg config.Application) *Dependencies {
 	deps.Clock = &utils.SystemClock{}
 	deps.StatsService = stats.NewService(deps.CurrentEventService, deps.WeeklyPlanService, deps.BudgetPlanService, deps.CalendarProvider)
 	deps.StatsHandler = stats.NewStatsHandler(deps.StatsService)
+
+	deps.BudgetPlanReportService = budget_plan_report.NewService(
+		deps.BudgetPlanService,
+		deps.CalendarProvider,
+		deps.KlokkuCalendarService,
+		deps.WeeklyPlanService,
+		deps.Clock,
+	)
+	deps.BudgetPlanReportHandler = budget_plan_report.NewHandler(deps.BudgetPlanReportService)
 
 	deps.ClickUpAuth = clickup.NewClickUpAuth(db, deps.UserService, cfg)
 	deps.ClickUpClient = clickup.NewClient(deps.ClickUpAuth)
