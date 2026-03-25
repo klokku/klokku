@@ -336,11 +336,7 @@ func itemDetailReportToDTO(report ItemDetailReport) ItemDetailReportDTO {
 
 	hourlyHeatmap := make([]HourlyHeatmapEntryDTO, 0, len(report.HourlyHeatmap))
 	for _, h := range report.HourlyHeatmap {
-		hourlyHeatmap = append(hourlyHeatmap, HourlyHeatmapEntryDTO{
-			DayOfWeek: h.DayOfWeek,
-			Hour:      h.Hour,
-			Count:     h.Count,
-		})
+		hourlyHeatmap = append(hourlyHeatmap, HourlyHeatmapEntryDTO(h))
 	}
 
 	return ItemDetailReportDTO{
