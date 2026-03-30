@@ -249,7 +249,7 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 }
 
 func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
-	planItems, err := s.planItemsProvider(ctx, startTime.Add(1*time.Hour))
+	planItems, err := s.planItemsProvider(ctx, startTime.Add(2*time.Hour))
 	if err != nil {
 		log.Errorf("failed to get plan items: %v", err)
 		return "", err
