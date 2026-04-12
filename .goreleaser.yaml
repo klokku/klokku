@@ -1,0 +1,57 @@
+version: 2
+
+builds:
+  - id: klokku-cli
+    main: ./cmd/klokku-cli
+    binary: klokku-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
+
+archives:
+  - id: klokku-cli
+    builds:
+      - klokku-cli
+    name_template: "klokku-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+brews:
+  - name: klokku-cli
+    ids:
+      - klokku-cli
+    repository:
+      owner: klokku
+      name: homebrew-tap
+    homepage: "https://github.com/klokku/klokku"
+    description: "CLI for Klokku time planning and tracking"
+    license: "MIT"
+    install: |
+      bin.install "klokku-cli"
+    test: |
+      system "#{bin}/klokku-cli", "--help"
+
+release:
+  github:
+    owner: klokku
+    name: klokku

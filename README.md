@@ -54,6 +54,44 @@ The domain model and the API are still in development and may change.
 You can run a development version of Klokku to check out the features.\
 The development version is fully usable, but we cannot guarantee the stability of the API, nor the automatic data migration if the underlying model changes.
 
+## CLI
+
+Klokku provides a command-line interface (`klokku-cli`) for interacting with the Klokku API. It is designed primarily for use by AI agents but works well for scripting and manual use too.
+
+### Installation
+
+```bash
+go install github.com/klokku/klokku/cmd/klokku-cli@latest
+```
+
+Or download a binary from [GitHub Releases](https://github.com/klokku/klokku/releases).
+
+### Configuration
+
+```bash
+klokku-cli config init
+```
+
+This creates `~/.config/klokku/config.yaml` with your server URL and authentication credentials.
+
+### AI Agent Skill
+
+The repository includes an [Agent Skill](skills/klokku-cli/SKILL.md) that teaches AI agents how to use Klokku CLI. To install it:
+
+**Claude Code**:
+```bash
+mkdir -p ~/.claude/skills/klokku-cli
+curl -sL https://raw.githubusercontent.com/klokku/klokku/main/skills/klokku-cli/SKILL.md -o ~/.claude/skills/klokku-cli/SKILL.md
+```
+
+**Cursor**:
+```bash
+mkdir -p ~/.cursor/skills/klokku-cli
+curl -sL https://raw.githubusercontent.com/klokku/klokku/main/skills/klokku-cli/SKILL.md -o ~/.cursor/skills/klokku-cli/SKILL.md
+```
+
+**Other AI agents**: Copy the contents of [skills/klokku-cli/SKILL.md](skills/klokku-cli/SKILL.md) into your agent's system prompt or instructions.
+
 ## API Documentation
 
 The API documentation is available via Swagger UI when the application is running:

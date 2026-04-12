@@ -24,5 +24,12 @@ build:
 	go build -o klokku
 .PHONY: build
 
+build-cli:
+	go build -o klokku-cli ./cmd/klokku-cli
+.PHONY: build-cli
+
+build-all: build build-cli
+.PHONY: build-all
+
 run: go run main.go
 .PHONY: run
