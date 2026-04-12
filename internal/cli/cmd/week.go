@@ -94,10 +94,7 @@ func newWeekOffCmd() *cobra.Command {
 			if date == "" {
 				date = defaultDateRFC3339()
 			}
-			isOff := true
-			if noOff {
-				isOff = false
-			}
+			isOff := !noOff
 			client, err := newAPIClient()
 			if err != nil {
 				return err
