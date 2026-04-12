@@ -145,9 +145,26 @@ func newWeekItemUpdateCmd() *cobra.Command {
 			if budgetItemID == 0 {
 				return fmt.Errorf("--budget-item-id is required")
 			}
+			client, err := newAPIClient()
+			if err != nil {
+				return err
+			}
+
+			// Look up the weekly item ID from the plan to avoid the
+			// "weekly items already exist" error when items are already materialized.
 			req := api.UpdateWeeklyItemRequest{
 				BudgetItemID: budgetItemID,
 			}
+			plan, err := client.GetWeeklyPlan(date)
+			if err == nil {
+				for _, item := range plan.Items {
+					if item.BudgetItemID == budgetItemID && item.ID != 0 {
+						req.ID = item.ID
+						break
+					}
+				}
+			}
+
 			if cmd.Flags().Changed("duration") {
 				dur, err := parseDuration(duration)
 				if err != nil {
@@ -157,10 +174,6 @@ func newWeekItemUpdateCmd() *cobra.Command {
 			}
 			if cmd.Flags().Changed("notes") {
 				req.Notes = notes
-			}
-			client, err := newAPIClient()
-			if err != nil {
-				return err
 			}
 			item, err := client.UpdateWeeklyItem(date, req)
 			if err != nil {
