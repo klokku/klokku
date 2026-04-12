@@ -2,9 +2,6 @@ version: 2
 
 project_name: klokku-cli
 
-monorepo:
-  tag_prefix: cli/
-
 builds:
   - id: klokku-cli
     main: ./cmd/klokku-cli

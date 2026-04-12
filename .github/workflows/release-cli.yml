@@ -22,6 +22,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Extract version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME#cli/}" >> "$GITHUB_OUTPUT"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -30,3 +34,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          # Strip the cli/ prefix so GoReleaser sees a plain semver tag
+          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.tag }}
