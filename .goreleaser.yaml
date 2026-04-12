@@ -20,12 +20,13 @@ builds:
 
 archives:
   - id: klokku-cli
-    builds:
-      - klokku-cli
-    name_template: "klokku-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
+    name_template: "klokku-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
@@ -45,6 +46,7 @@ brews:
     repository:
       owner: klokku
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/klokku/klokku"
     description: "CLI for Klokku time planning and tracking"
     license: "MIT"

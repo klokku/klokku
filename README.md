@@ -60,6 +60,12 @@ Klokku provides a command-line interface (`klokku-cli`) for interacting with the
 
 ### Installation
 
+**Homebrew** (macOS/Linux):
+```bash
+brew install klokku/tap/klokku-cli
+```
+
+**Go install** (requires Go 1.26+):
 ```bash
 go install github.com/klokku/klokku/cmd/klokku-cli@latest
 ```
