@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/klokku/klokku/pkg/weekly_plan"
 	log "github.com/sirupsen/logrus"
 )
+
+var errPlanItemNotFound = errors.New("plan item not found")
 
 type PlanItemsProviderFunc func(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error)
 
@@ -50,7 +53,11 @@ func (s *Service) AddEvent(ctx context.Context, event Event) ([]Event, error) {
 		for _, e := range events {
 			planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
 			if err != nil {
-				return err
+				if errors.Is(err, errPlanItemNotFound) {
+					planItemName = event.Summary
+				} else {
+					return err
+				}
 			}
 			e.Summary = planItemName
 
@@ -262,7 +269,7 @@ func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetI
 		}
 	}
 	if planItemInfo == nil {
-		return "", fmt.Errorf("invalid budget item id")
+		return "", errPlanItemNotFound
 	}
 	return planItemInfo.Name, nil
 }
