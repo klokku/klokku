@@ -1,58 +1,115 @@
 # Architecture
 
-Klokku follows a clean architecture pattern with clear separation of concerns between different layers:
+Klokku follows a clean architecture pattern with clear separation of concerns between different layers.
 
 ## Technology Stack
-- **Backend**: Go (Golang)
-- **Database**: Postgres with migrations managed by golang-migrate
+- **Backend**: Go 1.26+ (module `github.com/klokku/klokku`)
+- **Database**: PostgreSQL 18, accessed via `pgx/v5`; migrations managed by `golang-migrate` v4
 - **Web Framework**: Gorilla Mux for HTTP routing
-- **Frontend**: [React application](https://github.com/klokku/klokku-ui), optionally served by the Go backend
-- **External Integrations**: 
-  - Google Calendar API
+- **Configuration**: koanf (YAML file + `KLOKKU_`-prefixed env vars)
+- **Logging**: logrus (imported as `log`)
+- **API Docs**: Swagger via `swag`/`http-swagger`, served at `/swagger/`
+- **Frontend**: [React application](https://github.com/klokku/klokku-ui) (`klokku-ui`), optionally served by the Go backend when `frontend.enabled` is true
+- **External Integrations**:
+    - ClickUp (OAuth-based task integration)
+    - Google Calendar API (calendar provider option; currently disabled at runtime)
 
 ## Application Layers
 1. **Domain Layer**: Contains the core business entities and logic
-    - Domain models (e.g., Budget, Event, User)
+    - Domain models (e.g., `BudgetPlan`, `Event`, `User`)
     - Business rules and validations
 
 2. **Repository Layer**: Handles data access and persistence
-    - Database operations
+    - Database operations via `pgx/v5` connection pool
     - Data mapping between domain models and database schema
     - Transaction management
 
 3. **Service Layer**: Implements business logic and orchestrates operations
     - Business workflows
     - Integration with external services
-    - Authorization and validation
+    - Authorization and validation (reads the current user from context)
 
 4. **API Layer**: Handles HTTP requests and responses
     - Request parsing and validation
     - Response formatting
     - Error handling
-    - Authentication middleware
+    - Authentication middleware (resolves `X-User-Id` header into request context)
 
 ## Key Design Patterns
 - **Dependency Injection**: Components receive their dependencies through constructors
 - **Repository Pattern**: Data access is abstracted behind interfaces
 - **DTO Pattern**: Data Transfer Objects separate API representation from domain models
 - **Middleware**: HTTP request processing pipeline for cross-cutting concerns
+- **Event Bus**: An in-process event bus (`internal/event_bus`) notifies services of changes (e.g. current event changes, budget plan updates)
+- **Calendar Provider**: `calendar_provider.CalendarProvider` abstracts over multiple calendar backends, selecting one per user based on their settings
 
 ## Project Structure
-- `/pkg/`: Contains the core packages of the application
-    - `/budget/`: Budget management functionality
-    - `/event/`: Event tracking functionality
-    - `/user/`: User management functionality
-    - `/stats/`: Statistics generation functionality
-    - `/google/`: Google Calendar integration
-- `/internal/`: Internal packages not meant for external use
-- `/migrations/`: Database migration scripts
-- `/storage/`: Data storage location
-- `/contributing/`: Contribution guidelines
+
+### `/pkg/` - public domain packages, organized by feature
+Each package is importable by other projects and follows the four-file layering described in the "Domain Package Layout" section below.
+- `budget_plan` - budget plans and budget items management
+- `budget_plan_report` - reports comparing budget plans against tracked time
+- `calendar` - Klokku's built-in calendar and event management
+- `calendar_provider` - selects the active calendar backend for the current user
+- `clickup` - ClickUp OAuth integration, task sync, and per-budget-plan configuration
+- `current_event` - the currently running time-tracking event
+- `stats` - weekly and historical statistics
+- `user` - users, settings, and context propagation helpers
+- `webhook` - incoming webhooks (creation, listing, execution) used to drive current-event changes
+- `weekly_plan` - weekly plan items derived from budget plans
+
+### `/internal/` - private code not meant for external use
+- `app` - application wiring: `app.go` (lifecycle), `dependencies.go` (DI graph), `routes.go` (route registration), `middleware.go` (auth + context propagation)
+- `cli` - `klokku-cli` Cobra commands; REST client under `cli/api`, output formatting under `cli/output`, config under `cli/config`
+- `config` - koanf-based configuration loading
+- `database` - Postgres connection pool and migration runner
+- `event_bus` - in-process event bus shared across services
+- `rest` - HTTP helpers (error responses, frontend handler)
+- `test_utils` - testcontainers Postgres setup and user-related test helpers
+- `utils` - small shared utilities (e.g. `Clock` abstraction)
+
+### Other directories
+- `/migrations/` - golang-migrate up/down SQL files, numbered `NNNN_description.up.sql` / `.down.sql`
+- `/db/init.sql` - full schema for fresh DB installs (Docker Compose and testcontainers init); must stay in sync with `/migrations/`
+- `/docs/` - generated Swagger docs (`docs.go`, `swagger.json`, `swagger.yaml`); regenerated by `make swagger`
+- `/cmd/klokku-cli/` - CLI entry point (delegates to `internal/cli/cmd`)
+- `/scripts/` - install scripts (`install.sh`, `install.ps1`)
+- `/contributing/` - architecture and style guide documents
+- `/skills/` - AI agent skill for `klokku-cli` usage
+- `/storage/` - runtime data storage location (gitignored)
+- `/ui/` - frontend build output used when serving the UI from the Go backend (gitignored)
+
+## Domain Package Layout
+
+Each domain package in `/pkg/` follows a strict four-file layering:
+
+1. `<domain>.go` - domain models (plain structs, no logic)
+2. `repository.go` - `Repository` interface + `RepositoryImpl` using `*pgxpool.Pool`, constructed by `NewRepository(db)`
+3. `service.go` - `Service` interface + `ServiceImpl`, constructed by `NewService(repo, ...)`; business logic lives here and reads the current user from context via `user.CurrentId(ctx)`
+4. `handler.go` - HTTP `Handler` struct with methods wired to routes, constructed by `NewHandler(svc)`; methods carry `// @Summary` Swagger annotations
+
+Testing files live alongside the implementation:
+- `service_test.go` - stub-based business-logic tests (no Docker needed)
+- `repository_test.go` - testcontainers-based SQL tests (requires Docker)
+- `repository_stub.go` / other stubs - in-memory stub implementations used by service tests
 
 ## API Design
-The application exposes a RESTful API for frontend communication, with endpoints for:
-- User management
-- Budget management
-- Event tracking
-- Statistics generation
-- Google Calendar integration
+
+The application exposes a RESTful API under the `/api/...` prefix for frontend and CLI communication, with endpoints for:
+- User management and settings
+- Budget plan and budget item management
+- Weekly plan management
+- Current event tracking
+- Calendar events (Klokku calendar)
+- Statistics (weekly and item history)
+- Webhook management and execution
+- Budget plan reports
+- ClickUp integration (OAuth, workspaces, spaces, folders, tags, configuration, tasks)
+
+Routes are registered in `internal/app/routes.go`. Swagger UI is served at `/swagger/index.html` when the application is running.
+
+## CLI (`klokku-cli`)
+
+A Cobra-based CLI in `cmd/klokku-cli/` (delegating to `internal/cli/cmd`) for interacting with the API.
+Designed primarily for AI agents and scripting, released via GoReleaser on unprefixed Git tags.
+The `skills/klokku-cli/SKILL.md` file documents CLI usage for AI agents and should be kept in sync with CLI commands.
