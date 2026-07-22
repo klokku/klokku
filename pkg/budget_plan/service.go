@@ -3,6 +3,7 @@ package budget_plan
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/pkg/user"
@@ -14,6 +15,7 @@ type Service interface {
 	GetCurrentPlan(ctx context.Context) (BudgetPlan, error)
 	ListPlans(ctx context.Context) ([]BudgetPlan, error)
 	CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
+	DuplicatePlan(ctx context.Context, sourcePlanId int, newName string) (BudgetPlan, error)
 	UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error)
 	DeletePlan(ctx context.Context, planId int) (bool, error)
 	GetItem(ctx context.Context, id int) (BudgetItem, error)
@@ -62,6 +64,17 @@ func (s *ServiceImpl) CreatePlan(ctx context.Context, plan BudgetPlan) (BudgetPl
 		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
 	}
 	return s.repo.CreatePlan(ctx, userId, plan)
+}
+
+func (s *ServiceImpl) DuplicatePlan(ctx context.Context, sourcePlanId int, newName string) (BudgetPlan, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return BudgetPlan{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+	if strings.TrimSpace(newName) == "" {
+		return BudgetPlan{}, ErrPlanNameEmpty
+	}
+	return s.repo.DuplicatePlan(ctx, userId, sourcePlanId, newName)
 }
 
 func (s *ServiceImpl) UpdatePlan(ctx context.Context, plan BudgetPlan) (BudgetPlan, error) {
