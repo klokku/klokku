@@ -2,6 +2,7 @@ package budget_plan
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -538,5 +539,128 @@ func TestServiceImpl_GetItem(t *testing.T) {
 		assert.Equal(t, item.WeeklyOccurrences, readItem.WeeklyOccurrences)
 		assert.Equal(t, item.Icon, readItem.Icon)
 		assert.Equal(t, item.Color, readItem.Color)
+	})
+}
+
+func TestServiceImpl_DuplicatePlan(t *testing.T) {
+	t.Run("should duplicate a plan with all its items", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		sourcePlan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Source Plan"})
+		service.CreateItem(ctx, BudgetItem{
+			PlanId:            sourcePlan.Id,
+			Name:              "Item 1",
+			WeeklyDuration:    time.Duration(2) * time.Hour,
+			WeeklyOccurrences: 3,
+			Icon:              "SomeIcon",
+			Color:             "#FF0000",
+		})
+		service.CreateItem(ctx, BudgetItem{
+			PlanId:            sourcePlan.Id,
+			Name:              "Item 2",
+			WeeklyDuration:    time.Duration(4) * time.Hour,
+			WeeklyOccurrences: 5,
+			Icon:              "OtherIcon",
+			Color:             "#00FF00",
+		})
+
+		// when
+		duplicatedPlan, err := service.DuplicatePlan(ctx, sourcePlan.Id, "Duplicated Plan")
+
+		// then
+		assert.NoError(t, err)
+		assert.NotEqual(t, sourcePlan.Id, duplicatedPlan.Id)
+		assert.Equal(t, "Duplicated Plan", duplicatedPlan.Name)
+		assert.False(t, duplicatedPlan.IsCurrent)
+
+		duplicated, _ := service.GetPlan(ctx, duplicatedPlan.Id)
+		assert.Len(t, duplicated.Items, 2)
+		assert.Equal(t, "Item 1", duplicated.Items[0].Name)
+		assert.Equal(t, time.Duration(2)*time.Hour, duplicated.Items[0].WeeklyDuration)
+		assert.Equal(t, 3, duplicated.Items[0].WeeklyOccurrences)
+		assert.Equal(t, "SomeIcon", duplicated.Items[0].Icon)
+		assert.Equal(t, "#FF0000", duplicated.Items[0].Color)
+		assert.Equal(t, "Item 2", duplicated.Items[1].Name)
+		assert.Equal(t, time.Duration(4)*time.Hour, duplicated.Items[1].WeeklyDuration)
+		assert.Equal(t, 5, duplicated.Items[1].WeeklyOccurrences)
+		assert.Equal(t, "OtherIcon", duplicated.Items[1].Icon)
+		assert.Equal(t, "#00FF00", duplicated.Items[1].Color)
+	})
+
+	t.Run("should duplicate a plan with no items", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		sourcePlan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Empty Plan"})
+
+		// when
+		duplicatedPlan, err := service.DuplicatePlan(ctx, sourcePlan.Id, "Duplicated Empty Plan")
+
+		// then
+		assert.NoError(t, err)
+		assert.NotEqual(t, sourcePlan.Id, duplicatedPlan.Id)
+		assert.Equal(t, "Duplicated Empty Plan", duplicatedPlan.Name)
+
+		duplicated, _ := service.GetPlan(ctx, duplicatedPlan.Id)
+		assert.Len(t, duplicated.Items, 0)
+	})
+
+	t.Run("should not make duplicated plan current", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		sourcePlan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Source Plan"})
+
+		// when
+		duplicatedPlan, _ := service.DuplicatePlan(ctx, sourcePlan.Id, "Duplicated Plan")
+
+		// then
+		currentPlan, err := service.GetCurrentPlan(ctx)
+		assert.NoError(t, err)
+		assert.NotEqual(t, duplicatedPlan.Id, currentPlan.Id)
+		assert.Equal(t, sourcePlan.Id, currentPlan.Id)
+	})
+
+	t.Run("should return error when source plan does not exist", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// when
+		_, err := service.DuplicatePlan(ctx, 999, "Non-existent Plan")
+
+		// then
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrPlanNotFound))
+	})
+
+	t.Run("should return error when name is empty", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// given
+		plan, _ := service.CreatePlan(ctx, BudgetPlan{Name: "Source Plan"})
+
+		// when
+		_, err := service.DuplicatePlan(ctx, plan.Id, "")
+
+		// then
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrPlanNameEmpty))
+	})
+
+	t.Run("should return error when context has no user", func(t *testing.T) {
+		teardown := setup(t)
+		defer teardown()
+
+		// when
+		_, err := service.DuplicatePlan(context.Background(), 1, "Test")
+
+		// then
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to get current user")
 	})
 }

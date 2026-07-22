@@ -15,6 +15,7 @@ import (
 var ErrPlanNotFound = errors.New("plan not found")
 var ErrDeletingCurrentPlan = errors.New("cannot delete current plan")
 var ErrBudgetPlanItemNotFound = errors.New("budget plan item not found")
+var ErrPlanNameEmpty = errors.New("plan name cannot be empty")
 
 type Repository interface {
 	StoreItem(ctx context.Context, userId int, budget BudgetItem) (int, int, error)
@@ -22,6 +23,7 @@ type Repository interface {
 	GetCurrentPlan(ctx context.Context, userId int) (BudgetPlan, error)
 	ListPlans(ctx context.Context, userId int) ([]BudgetPlan, error)
 	CreatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error)
+	DuplicatePlan(ctx context.Context, userId int, sourcePlanId int, newName string) (BudgetPlan, error)
 	UpdatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error)
 	DeletePlan(ctx context.Context, userId int, planId int) (bool, error)
 	GetItem(ctx context.Context, userId int, itemId int) (BudgetItem, error)
@@ -280,6 +282,51 @@ func (r *RepositoryImpl) CreatePlan(ctx context.Context, userId int, plan Budget
 	}
 
 	return BudgetPlan{Id: planId, Name: plan.Name}, nil
+}
+
+func (r *RepositoryImpl) DuplicatePlan(ctx context.Context, userId int, sourcePlanId int, newName string) (BudgetPlan, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return BudgetPlan{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var sourceExists bool
+	err = tx.QueryRow(ctx, `SELECT true FROM budget_plan WHERE id = $1 AND user_id = $2`, sourcePlanId, userId).Scan(&sourceExists)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return BudgetPlan{}, ErrPlanNotFound
+		}
+		err := fmt.Errorf("could not verify source plan: %w", err)
+		log.Error(err)
+		return BudgetPlan{}, err
+	}
+
+	var newPlanId int
+	query := `INSERT INTO budget_plan (name, user_id) VALUES ($1, $2) RETURNING id`
+	err = tx.QueryRow(ctx, query, newName, userId).Scan(&newPlanId)
+	if err != nil {
+		err := fmt.Errorf("could not insert duplicated plan: %w", err)
+		log.Error(err)
+		return BudgetPlan{}, err
+	}
+
+	query = `INSERT INTO budget_item (budget_plan_id, name, weekly_duration_sec, weekly_occurrences, icon, color, position, user_id)
+		SELECT $1, name, weekly_duration_sec, weekly_occurrences, icon, color, position, user_id
+		FROM budget_item
+		WHERE budget_plan_id = $2 AND user_id = $3`
+	_, err = tx.Exec(ctx, query, newPlanId, sourcePlanId, userId)
+	if err != nil {
+		err := fmt.Errorf("could not copy items: %w", err)
+		log.Error(err)
+		return BudgetPlan{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return BudgetPlan{}, fmt.Errorf("could not commit transaction: %w", err)
+	}
+
+	return BudgetPlan{Id: newPlanId, Name: newName}, nil
 }
 
 func (r *RepositoryImpl) UpdatePlan(ctx context.Context, userId int, plan BudgetPlan) (BudgetPlan, error) {

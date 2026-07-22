@@ -28,6 +28,193 @@ definitions:
       weeklyOccurrences:
         type: integer
     type: object
+  budget_plan_report.DayOfWeekEntryDTO:
+    properties:
+      averageTime:
+        type: integer
+      dayOfWeek:
+        type: integer
+      totalTime:
+        type: integer
+    type: object
+  budget_plan_report.HourlyHeatmapEntryDTO:
+    properties:
+      count:
+        type: integer
+      dayOfWeek:
+        type: integer
+      hour:
+        type: integer
+    type: object
+  budget_plan_report.ItemDayEntryDTO:
+    properties:
+      actualTime:
+        type: integer
+      date:
+        type: string
+      dayOfWeek:
+        type: integer
+    type: object
+  budget_plan_report.ItemDetailReportDTO:
+    properties:
+      activeDaysCount:
+        type: integer
+      averagePerActiveDay:
+        type: integer
+      averagePerDay:
+        type: integer
+      averagePerWeek:
+        type: integer
+      completionPercent:
+        type: number
+      dayOfWeekAvg:
+        items:
+          $ref: '#/definitions/budget_plan_report.DayOfWeekEntryDTO'
+        type: array
+      days:
+        items:
+          $ref: '#/definitions/budget_plan_report.ItemDayEntryDTO'
+        type: array
+      endDate:
+        type: string
+      excludedWeekCount:
+        type: integer
+      hourlyHeatmap:
+        items:
+          $ref: '#/definitions/budget_plan_report.HourlyHeatmapEntryDTO'
+        type: array
+      itemColor:
+        type: string
+      itemIcon:
+        type: string
+      itemId:
+        type: integer
+      itemName:
+        type: string
+      medianPerActiveDay:
+        type: integer
+      medianPerDay:
+        type: integer
+      medianPerWeek:
+        type: integer
+      overBudgetTime:
+        type: integer
+      planId:
+        type: integer
+      planName:
+        type: string
+      remainingTime:
+        type: integer
+      startDate:
+        type: string
+      totalActualTime:
+        type: integer
+      totalBudgetPlanTime:
+        type: integer
+      totalDaysCount:
+        type: integer
+      totalWeeklyPlanTime:
+        type: integer
+      weekCount:
+        type: integer
+      weeks:
+        items:
+          $ref: '#/definitions/budget_plan_report.ItemWeekEntryDTO'
+        type: array
+    type: object
+  budget_plan_report.ItemWeekEntryDTO:
+    properties:
+      actualTime:
+        type: integer
+      budgetPlanTime:
+        type: integer
+      endDate:
+        type: string
+      isOffWeek:
+        type: boolean
+      startDate:
+        type: string
+      weekNumber:
+        type: string
+      weeklyPlanTime:
+        type: integer
+    type: object
+  budget_plan_report.ReportDTO:
+    properties:
+      endDate:
+        type: string
+      excludedWeekCount:
+        type: integer
+      planId:
+        type: integer
+      planName:
+        type: string
+      startDate:
+        type: string
+      totals:
+        $ref: '#/definitions/budget_plan_report.ReportTotalsDTO'
+      weekCount:
+        type: integer
+      weeks:
+        items:
+          $ref: '#/definitions/budget_plan_report.WeeklyReportEntryDTO'
+        type: array
+    type: object
+  budget_plan_report.ReportItemDTO:
+    properties:
+      actualTime:
+        type: integer
+      averagePerDay:
+        type: integer
+      averagePerWeek:
+        type: integer
+      budgetItemId:
+        type: integer
+      budgetPlanTime:
+        type: integer
+      color:
+        type: string
+      icon:
+        type: string
+      name:
+        type: string
+      position:
+        type: integer
+      weeklyPlanTime:
+        type: integer
+    type: object
+  budget_plan_report.ReportTotalsDTO:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/budget_plan_report.ReportItemDTO'
+        type: array
+      totalActualTime:
+        type: integer
+      totalBudgetPlanTime:
+        type: integer
+      totalWeeklyPlanTime:
+        type: integer
+    type: object
+  budget_plan_report.WeeklyReportEntryDTO:
+    properties:
+      endDate:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/budget_plan_report.ReportItemDTO'
+        type: array
+      startDate:
+        type: string
+      totalActualTime:
+        type: integer
+      totalBudgetPlanTime:
+        type: integer
+      totalWeeklyPlanTime:
+        type: integer
+      weekNumber:
+        type: string
+    type: object
   calendar.EventDTO:
     properties:
       budgetItemId:
@@ -268,6 +455,8 @@ definitions:
     properties:
       budgetPlanId:
         type: integer
+      isOffWeek:
+        type: boolean
       items:
         items:
           $ref: '#/definitions/weekly_plan.WeeklyPlanItemDTO'
@@ -454,6 +643,47 @@ paths:
       summary: Update an existing budget plan
       tags:
       - BudgetPlan
+  /api/budgetplan/{planId}/duplicate:
+    post:
+      consumes:
+      - application/json
+      description: Create a copy of an existing budget plan with all its items under
+        a new name
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: New plan name
+        in: body
+        name: plan
+        required: true
+        schema:
+          properties:
+            name:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/budget_plan.BudgetPlanDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Duplicate a budget plan with all its items
+      tags:
+      - BudgetPlan
   /api/budgetplan/{planId}/item:
     post:
       consumes:
@@ -613,6 +843,89 @@ paths:
       summary: Set position of a budget item
       tags:
       - BudgetItem
+  /api/budgetplan/{planId}/report:
+    get:
+      description: Retrieve report for a budget plan. Without from/to params returns
+        full lifetime data. With from/to returns data for the specified period.
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Start date in RFC3339 format (must be provided together with
+          'to')
+        in: query
+        name: from
+        type: string
+      - description: End date in RFC3339 format (must be provided together with 'from')
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/budget_plan_report.ReportDTO'
+        "400":
+          description: Invalid parameters
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get budget plan report
+      tags:
+      - BudgetPlanReport
+  /api/budgetplan/{planId}/report/item/{itemId}:
+    get:
+      description: Retrieve detailed statistics, weekly breakdown, daily breakdown,
+        and day-of-week averages for a single budget plan item.
+      parameters:
+      - description: Budget Plan ID
+        in: path
+        name: planId
+        required: true
+        type: integer
+      - description: Budget Item ID
+        in: path
+        name: itemId
+        required: true
+        type: integer
+      - description: Start date in RFC3339 format (must be provided together with
+          'to')
+        in: query
+        name: from
+        type: string
+      - description: End date in RFC3339 format (must be provided together with 'from')
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/budget_plan_report.ItemDetailReportDTO'
+        "400":
+          description: Invalid parameters
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get detailed report for a single budget plan item
+      tags:
+      - BudgetPlanReport
   /api/calendar/event:
     get:
       description: Retrieve calendar events within a date range
@@ -1703,6 +2016,47 @@ paths:
       security:
       - XUserId: []
       summary: Reset a weekly plan item
+      tags:
+      - WeeklyPlan
+  /api/weeklyplan/off-week:
+    put:
+      consumes:
+      - application/json
+      description: Mark or unmark a week as an off-week. Off-weeks are excluded from
+        budget plan reports.
+      parameters:
+      - description: Date in RFC3339 format (can be any day of the week)
+        in: query
+        name: date
+        required: true
+        type: string
+      - description: Off-week flag
+        in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            isOffWeek:
+              type: boolean
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/weekly_plan.WeeklyPlanDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Set off-week flag
       tags:
       - WeeklyPlan
   /webhook/{token}:

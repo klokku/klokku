@@ -99,6 +99,60 @@ func (handler *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DuplicatePlan godoc
+// @Summary Duplicate a budget plan with all its items
+// @Description Create a copy of an existing budget plan with all its items under a new name
+// @Tags BudgetPlan
+// @Accept json
+// @Produce json
+// @Param planId path int true "Budget Plan ID"
+// @Param plan body object{name=string} true "New plan name"
+// @Success 201 {object} BudgetPlanDTO
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Router /api/budgetplan/{planId}/duplicate [post]
+// @Security XUserId
+func (handler *Handler) DuplicatePlan(w http.ResponseWriter, r *http.Request) {
+	log.Debug("Duplicating budget plan")
+	w.Header().Set("Content-Type", "application/json")
+	vars := mux.Vars(r)
+	planIdString := vars["planId"]
+	planId, err := strconv.Atoi(planIdString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	plan, err := handler.service.DuplicatePlan(r.Context(), planId, req.Name)
+	if err != nil {
+		if errors.Is(err, ErrPlanNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrPlanNameEmpty) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	planDTO := PlanToDTO(plan)
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(planDTO); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 // UpdatePlan godoc
 // @Summary Update an existing budget plan
 // @Description Update a budget plan by ID

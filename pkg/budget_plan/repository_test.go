@@ -438,3 +438,97 @@ func TestRepositoryImpl_GetItem(t *testing.T) {
 	assert.Equal(t, "#DDDDFF", item.Color)
 	assert.Equal(t, "some-icon", item.Icon)
 }
+
+func TestRepositoryImpl_DuplicatePlan(t *testing.T) {
+	t.Run("should duplicate plan with all items", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		sourcePlan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Source Plan"})
+		repo.StoreItem(ctx, userId, BudgetItem{PlanId: sourcePlan.Id, Name: "Item 1", WeeklyDuration: time.Hour, WeeklyOccurrences: 3, Icon: "icon1", Color: "#FF0000"})
+		repo.StoreItem(ctx, userId, BudgetItem{PlanId: sourcePlan.Id, Name: "Item 2", WeeklyDuration: 2 * time.Hour, WeeklyOccurrences: 5, Icon: "icon2", Color: "#00FF00"})
+
+		// when
+		duplicated, err := repo.DuplicatePlan(ctx, userId, sourcePlan.Id, "Duplicated Plan")
+
+		// then
+		assert.NoError(t, err)
+		assert.NotEqual(t, sourcePlan.Id, duplicated.Id)
+		assert.Equal(t, "Duplicated Plan", duplicated.Name)
+
+		storedDuplicated, _ := repo.GetPlan(ctx, userId, duplicated.Id)
+		assert.Len(t, storedDuplicated.Items, 2)
+		assert.Equal(t, "Item 1", storedDuplicated.Items[0].Name)
+		assert.Equal(t, time.Hour, storedDuplicated.Items[0].WeeklyDuration)
+		assert.Equal(t, 3, storedDuplicated.Items[0].WeeklyOccurrences)
+		assert.Equal(t, "icon1", storedDuplicated.Items[0].Icon)
+		assert.Equal(t, "#FF0000", storedDuplicated.Items[0].Color)
+		assert.NotEqual(t, 0, storedDuplicated.Items[0].Id)
+		assert.Equal(t, "Item 2", storedDuplicated.Items[1].Name)
+		assert.Equal(t, 2*time.Hour, storedDuplicated.Items[1].WeeklyDuration)
+		assert.Equal(t, 5, storedDuplicated.Items[1].WeeklyOccurrences)
+		assert.Equal(t, "icon2", storedDuplicated.Items[1].Icon)
+		assert.Equal(t, "#00FF00", storedDuplicated.Items[1].Color)
+
+		source, _ := repo.GetPlan(ctx, userId, sourcePlan.Id)
+		assert.Len(t, source.Items, 2, "source plan items should be unchanged")
+	})
+
+	t.Run("should duplicate plan with no items", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		sourcePlan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Empty Plan"})
+
+		// when
+		duplicated, err := repo.DuplicatePlan(ctx, userId, sourcePlan.Id, "Duplicated Empty")
+
+		// then
+		assert.NoError(t, err)
+		assert.NotEqual(t, sourcePlan.Id, duplicated.Id)
+		storedDuplicated, _ := repo.GetPlan(ctx, userId, duplicated.Id)
+		assert.Empty(t, storedDuplicated.Items)
+	})
+
+	t.Run("should not make duplicated plan current", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		sourcePlan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "Source Plan"})
+
+		// when
+		duplicated, _ := repo.DuplicatePlan(ctx, userId, sourcePlan.Id, "Duplicated Plan")
+
+		// then
+		storedDuplicated, _ := repo.GetPlan(ctx, userId, duplicated.Id)
+		assert.False(t, storedDuplicated.IsCurrent)
+		current, _ := repo.GetCurrentPlan(ctx, userId)
+		assert.Equal(t, sourcePlan.Id, current.Id)
+	})
+
+	t.Run("should return error when source plan does not exist", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+
+		// when
+		_, err := repo.DuplicatePlan(ctx, userId, 99999, "Non-existent")
+
+		// then
+		assert.ErrorIs(t, err, ErrPlanNotFound)
+		plans, _ := repo.ListPlans(ctx, userId)
+		assert.Empty(t, plans, "no plan should be created when source does not exist")
+	})
+
+	t.Run("should not duplicate plan owned by another user", func(t *testing.T) {
+		// given
+		ctx, repo, userId := setupTestRepository(t)
+		sourcePlan, _ := repo.CreatePlan(ctx, userId, BudgetPlan{Name: "User A Plan"})
+		repo.StoreItem(ctx, userId, BudgetItem{PlanId: sourcePlan.Id, Name: "User A Item", WeeklyDuration: time.Hour})
+		otherUserId := 2
+
+		// when
+		_, err := repo.DuplicatePlan(ctx, otherUserId, sourcePlan.Id, "User B Copy")
+
+		// then
+		assert.ErrorIs(t, err, ErrPlanNotFound)
+		otherPlans, _ := repo.ListPlans(ctx, otherUserId)
+		assert.Empty(t, otherPlans, "no plan should be created for the other user")
+	})
+}

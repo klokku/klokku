@@ -25,6 +25,30 @@ func (s *RepositoryStub) CreatePlan(ctx context.Context, userId int, plan Budget
 	return plan, nil
 }
 
+func (s *RepositoryStub) DuplicatePlan(ctx context.Context, userId int, sourcePlanId int, newName string) (BudgetPlan, error) {
+	sourcePlan, exists := s.plans[sourcePlanId]
+	if !exists {
+		return BudgetPlan{}, ErrPlanNotFound
+	}
+
+	s.nextId++
+	newPlan := BudgetPlan{
+		Id:        s.nextId,
+		Name:      newName,
+		IsCurrent: false,
+		Items:     make([]BudgetItem, 0, len(sourcePlan.Items)),
+	}
+	for _, item := range sourcePlan.Items {
+		s.nextId++
+		copiedItem := item
+		copiedItem.Id = s.nextId
+		copiedItem.PlanId = newPlan.Id
+		newPlan.Items = append(newPlan.Items, copiedItem)
+	}
+	s.plans[newPlan.Id] = newPlan
+	return newPlan, nil
+}
+
 func (s *RepositoryStub) GetCurrentPlan(ctx context.Context, userId int) (BudgetPlan, error) {
 	if s.currentPlanId == 0 {
 		return BudgetPlan{}, ErrPlanNotFound

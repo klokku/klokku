@@ -20,6 +20,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.GetPlan).Methods("GET")
 	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.UpdatePlan).Methods("PUT")
 	r.HandleFunc("/api/budgetplan/{planId}", deps.BudgetPlanHandler.DeletePlan).Methods("DELETE")
+	r.HandleFunc("/api/budgetplan/{planId}/duplicate", deps.BudgetPlanHandler.DuplicatePlan).Methods("POST")
 
 	// Budget Item
 	r.HandleFunc("/api/budgetplan/{planId}/item", deps.BudgetPlanHandler.RegisterItem).Methods("POST")
