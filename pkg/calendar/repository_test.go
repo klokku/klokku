@@ -3,6 +3,7 @@ package calendar
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -515,6 +516,15 @@ func TestRepositoryImpl_EventNotes(t *testing.T) {
 		// Then
 		require.NoError(t, err)
 		assert.Empty(t, updated.Notes)
+	})
+
+	t.Run("database rejects notes over maximum length", func(t *testing.T) {
+		event := createTestEvent("Too long", baseTime, baseTime.Add(time.Hour), 1)
+		event.Notes = strings.Repeat("a", MaxNotesLength+1)
+
+		_, err := repository.StoreEvent(ctx, userId, event)
+
+		require.Error(t, err)
 	})
 }
 

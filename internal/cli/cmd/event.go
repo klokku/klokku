@@ -262,7 +262,6 @@ func newEventCreateCmd() *cobra.Command {
 
 func newEventUpdateCmd() *cobra.Command {
 	var (
-		summary      string
 		start        string
 		end          string
 		notes        string
@@ -273,8 +272,7 @@ func newEventUpdateCmd() *cobra.Command {
 		Short: "Update a calendar event",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !cmd.Flags().Changed("summary") &&
-				!cmd.Flags().Changed("start") &&
+			if !cmd.Flags().Changed("start") &&
 				!cmd.Flags().Changed("end") &&
 				!cmd.Flags().Changed("notes") &&
 				!cmd.Flags().Changed("budget-item-id") {
@@ -287,9 +285,6 @@ func newEventUpdateCmd() *cobra.Command {
 				return err
 			}
 			event := api.CalendarEventPatchDTO{}
-			if cmd.Flags().Changed("summary") {
-				event.Summary = &summary
-			}
 			if cmd.Flags().Changed("start") {
 				event.Start = &start
 			}
@@ -312,7 +307,6 @@ func newEventUpdateCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&summary, "summary", "", "Event summary")
 	cmd.Flags().StringVar(&start, "start", "", "Start time in RFC3339 format, e.g. 2026-04-05T09:00:00Z")
 	cmd.Flags().StringVar(&end, "end", "", "End time in RFC3339 format, e.g. 2026-04-05T10:00:00Z")
 	cmd.Flags().StringVar(&notes, "notes", "", "Event notes (empty string clears the note)")

@@ -39,6 +39,9 @@ func (s *EventServiceImpl) FindCurrentEvent(ctx context.Context) (CurrentEvent, 
 }
 
 func (s *EventServiceImpl) StartNewEvent(ctx context.Context, event CurrentEvent) (CurrentEvent, error) {
+	if err := calendar.ValidateNotes(event.Notes); err != nil {
+		return CurrentEvent{}, err
+	}
 	currentUser, err := user.CurrentUser(ctx)
 	if err != nil {
 		return CurrentEvent{}, fmt.Errorf("failed to get current user: %w", err)
@@ -147,6 +150,9 @@ func (s *EventServiceImpl) ModifyCurrentEventStartTime(ctx context.Context, newS
 }
 
 func (s *EventServiceImpl) ModifyCurrentEventNotes(ctx context.Context, notes string) (CurrentEvent, error) {
+	if err := calendar.ValidateNotes(notes); err != nil {
+		return CurrentEvent{}, err
+	}
 	userId, err := user.CurrentId(ctx)
 	if err != nil {
 		return CurrentEvent{}, fmt.Errorf("failed to get current user: %w", err)
