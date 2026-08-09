@@ -139,19 +139,74 @@ func TestClient_StartEvent(t *testing.T) {
 		var req StartEventRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		assert.Equal(t, 5, req.BudgetItemID)
+		assert.Equal(t, "kick-off note", req.Notes)
 
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(CurrentEventDTO{
 			PlanItem:  PlanItemDTO{BudgetItemID: 5, Name: "Work"},
 			StartTime: "2026-04-05T09:00:00Z",
+			Notes:     "kick-off note",
 		})
 	}))
 	defer srv.Close()
 
 	client := NewClient(srv.URL, "tok", "")
-	event, err := client.StartEvent(5, "Work", 28800)
+	event, err := client.StartEvent(5, "Work", 28800, "kick-off note")
 	require.NoError(t, err)
 	assert.Equal(t, "Work", event.PlanItem.Name)
+	assert.Equal(t, "kick-off note", event.Notes)
+}
+
+func TestClient_UpdateCalendarEvent(t *testing.T) {
+	tests := []struct {
+		name      string
+		patch     CalendarEventPatchDTO
+		wantBody  map[string]any
+		wantNotes string
+	}{
+		{
+			name:      "sends notes-only patch",
+			patch:     CalendarEventPatchDTO{Notes: pointerTo("Updated note")},
+			wantBody:  map[string]any{"notes": "Updated note"},
+			wantNotes: "Updated note",
+		},
+		{
+			name:      "includes explicit empty notes",
+			patch:     CalendarEventPatchDTO{Notes: pointerTo("")},
+			wantBody:  map[string]any{"notes": ""},
+			wantNotes: "",
+		},
+		{
+			name:      "omits notes when not changed",
+			patch:     CalendarEventPatchDTO{Start: pointerTo("2026-04-05T10:00:00Z")},
+			wantBody:  map[string]any{"start": "2026-04-05T10:00:00Z"},
+			wantNotes: "Existing note",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/calendar/event/event-1", r.URL.Path)
+				assert.Equal(t, http.MethodPatch, r.Method)
+				var body map[string]any
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, test.wantBody, body)
+				json.NewEncoder(w).Encode([]CalendarEventDTO{{UID: "event-1", Notes: test.wantNotes}})
+			}))
+			defer srv.Close()
+
+			client := NewClient(srv.URL, "tok", "")
+			events, err := client.UpdateCalendarEvent("event-1", test.patch)
+			require.NoError(t, err)
+			require.Len(t, events, 1)
+			assert.Equal(t, test.wantNotes, events[0].Notes)
+		})
+	}
+}
+
+func pointerTo[T any](value T) *T {
+	return &value
 }
 
 func TestNewClientNoAuth(t *testing.T) {

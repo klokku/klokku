@@ -27,7 +27,8 @@ func newEventCmd() *cobra.Command {
 }
 
 func newEventStartCmd() *cobra.Command {
-	return &cobra.Command{
+	var notes string
+	cmd := &cobra.Command{
 		Use:   "start <budgetItemId>",
 		Short: "Start tracking time for a budget item",
 		Long: `Start tracking time for a budget item. The budget item's name and weekly duration
@@ -69,7 +70,7 @@ are automatically looked up from the current budget plan.`,
 				break
 			}
 
-			event, err := client.StartEvent(budgetItemID, itemName, weeklyDuration)
+			event, err := client.StartEvent(budgetItemID, itemName, weeklyDuration, notes)
 			if err != nil {
 				return err
 			}
@@ -79,6 +80,8 @@ are automatically looked up from the current budget plan.`,
 			})
 		},
 	}
+	cmd.Flags().StringVar(&notes, "notes", "", "Optional notes for the event")
+	return cmd
 }
 
 func newEventCurrentCmd() *cobra.Command {
@@ -97,11 +100,15 @@ func newEventCurrentCmd() *cobra.Command {
 			return output.Print(outputFormat, event, func() {
 				fmt.Printf("Current: %s (budget item %d)\n", event.PlanItem.Name, event.PlanItem.BudgetItemID)
 				fmt.Printf("Started: %s\n", event.StartTime)
+				if event.Notes != "" {
+					fmt.Printf("Notes: %s\n", event.Notes)
+				}
 			})
 		},
 	}
 
 	currentCmd.AddCommand(newEventCurrentAdjustStartCmd())
+	currentCmd.AddCommand(newEventCurrentSetNotesCmd())
 
 	return currentCmd
 }
@@ -130,6 +137,31 @@ func newEventCurrentAdjustStartCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&startTime, "time", "", "New start time in RFC3339 format, e.g. 2026-04-05T09:00:00Z (required)")
 	return cmd
+}
+
+func newEventCurrentSetNotesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "set-notes <notes>",
+		Short: "Set notes on the current event (pass an empty string to clear)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := newAPIClient()
+			if err != nil {
+				return err
+			}
+			event, err := client.UpdateCurrentEventNotes(args[0])
+			if err != nil {
+				return err
+			}
+			return output.Print(outputFormat, event, func() {
+				if event.Notes == "" {
+					fmt.Println("Notes cleared")
+				} else {
+					fmt.Printf("Notes set: %s\n", event.Notes)
+				}
+			})
+		},
+	}
 }
 
 func newEventListCmd() *cobra.Command {
@@ -187,6 +219,7 @@ func newEventCreateCmd() *cobra.Command {
 		summary      string
 		start        string
 		end          string
+		notes        string
 		budgetItemID int
 	)
 	cmd := &cobra.Command{
@@ -207,6 +240,7 @@ func newEventCreateCmd() *cobra.Command {
 				Summary:      summary,
 				Start:        start,
 				End:          end,
+				Notes:        notes,
 				BudgetItemID: budgetItemID,
 			})
 			if err != nil {
@@ -221,6 +255,7 @@ func newEventCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&summary, "summary", "", "Event summary (required)")
 	cmd.Flags().StringVar(&start, "start", "", "Start time in RFC3339 format, e.g. 2026-04-05T09:00:00Z (required)")
 	cmd.Flags().StringVar(&end, "end", "", "End time in RFC3339 format, e.g. 2026-04-05T10:00:00Z (required)")
+	cmd.Flags().StringVar(&notes, "notes", "", "Optional notes for the event")
 	cmd.Flags().IntVar(&budgetItemID, "budget-item-id", 0, "Budget item ID")
 	return cmd
 }
@@ -230,6 +265,7 @@ func newEventUpdateCmd() *cobra.Command {
 		summary      string
 		start        string
 		end          string
+		notes        string
 		budgetItemID int
 	)
 	cmd := &cobra.Command{
@@ -237,23 +273,34 @@ func newEventUpdateCmd() *cobra.Command {
 		Short: "Update a calendar event",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !cmd.Flags().Changed("summary") &&
+				!cmd.Flags().Changed("start") &&
+				!cmd.Flags().Changed("end") &&
+				!cmd.Flags().Changed("notes") &&
+				!cmd.Flags().Changed("budget-item-id") {
+				return fmt.Errorf("at least one update flag is required")
+			}
+
 			eventUID := args[0]
 			client, err := newAPIClient()
 			if err != nil {
 				return err
 			}
-			event := api.CalendarEventDTO{UID: eventUID}
-			if summary != "" {
-				event.Summary = summary
+			event := api.CalendarEventPatchDTO{}
+			if cmd.Flags().Changed("summary") {
+				event.Summary = &summary
 			}
-			if start != "" {
-				event.Start = start
+			if cmd.Flags().Changed("start") {
+				event.Start = &start
 			}
-			if end != "" {
-				event.End = end
+			if cmd.Flags().Changed("end") {
+				event.End = &end
+			}
+			if cmd.Flags().Changed("notes") {
+				event.Notes = &notes
 			}
 			if cmd.Flags().Changed("budget-item-id") {
-				event.BudgetItemID = budgetItemID
+				event.BudgetItemID = &budgetItemID
 			}
 			events, err := client.UpdateCalendarEvent(eventUID, event)
 			if err != nil {
@@ -268,6 +315,7 @@ func newEventUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&summary, "summary", "", "Event summary")
 	cmd.Flags().StringVar(&start, "start", "", "Start time in RFC3339 format, e.g. 2026-04-05T09:00:00Z")
 	cmd.Flags().StringVar(&end, "end", "", "End time in RFC3339 format, e.g. 2026-04-05T10:00:00Z")
+	cmd.Flags().StringVar(&notes, "notes", "", "Event notes (empty string clears the note)")
 	cmd.Flags().IntVar(&budgetItemID, "budget-item-id", 0, "Budget item ID")
 	return cmd
 }
@@ -293,11 +341,11 @@ func newEventDeleteCmd() *cobra.Command {
 }
 
 func printCalendarEventsText(events []api.CalendarEventDTO) {
-	headers := []string{"UID", "SUMMARY", "START", "END", "BUDGET ITEM"}
+	headers := []string{"UID", "SUMMARY", "START", "END", "BUDGET ITEM", "NOTES"}
 	rows := make([][]string, 0, len(events))
 	for _, e := range events {
 		rows = append(rows, []string{
-			e.UID, e.Summary, e.Start, e.End, strconv.Itoa(e.BudgetItemID),
+			e.UID, e.Summary, e.Start, e.End, strconv.Itoa(e.BudgetItemID), e.Notes,
 		})
 	}
 	output.PrintText(headers, rows)

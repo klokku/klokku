@@ -221,11 +221,26 @@ definitions:
         type: integer
       end:
         type: string
+      notes:
+        type: string
       start:
         type: string
       summary:
         type: string
       uid:
+        type: string
+    type: object
+  calendar.EventPatchDTO:
+    properties:
+      budgetItemId:
+        type: integer
+      end:
+        type: string
+      notes:
+        type: string
+      start:
+        type: string
+      summary:
         type: string
     type: object
   clickup.BudgetMappingDTO:
@@ -291,9 +306,16 @@ definitions:
     type: object
   current_event.CurrentEventDTO:
     properties:
+      notes:
+        type: string
       planItem:
         $ref: '#/definitions/current_event.PlanItemDTO'
       startTime:
+        type: string
+    type: object
+  current_event.CurrentEventNotesPatchDTO:
+    properties:
+      notes:
         type: string
     type: object
   current_event.PlanItemDTO:
@@ -1016,6 +1038,48 @@ paths:
       summary: Delete a calendar event
       tags:
       - Calendar
+    patch:
+      consumes:
+      - application/json
+      description: Update only the supplied fields of an existing calendar event
+      parameters:
+      - description: Event UID
+        in: path
+        name: eventUid
+        required: true
+        type: string
+      - description: Calendar event fields to update
+        in: body
+        name: event
+        required: true
+        schema:
+          $ref: '#/definitions/calendar.EventPatchDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Array of modified events
+          schema:
+            items:
+              $ref: '#/definitions/calendar.EventDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: Event not found
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Partially update a calendar event
+      tags:
+      - Calendar
     put:
       consumes:
       - application/json
@@ -1099,6 +1163,8 @@ paths:
               type: integer
             name:
               type: string
+            notes:
+              type: string
             weeklyDuration:
               type: integer
           type: object
@@ -1139,6 +1205,43 @@ paths:
       security:
       - XUserId: []
       summary: Get the current running event
+      tags:
+      - CurrentEvent
+  /api/event/current/notes:
+    patch:
+      consumes:
+      - application/json
+      description: Set or clear notes on the currently running event. Notes are optional
+        and do not affect time tracking.
+      parameters:
+      - description: Notes text (empty string clears the note)
+        in: body
+        name: notes
+        required: true
+        schema:
+          $ref: '#/definitions/current_event.CurrentEventNotesPatchDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/current_event.CurrentEventDTO'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/rest.ErrorResponse'
+        "403":
+          description: User not found
+          schema:
+            type: string
+        "404":
+          description: No current event
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Modify current event notes
       tags:
       - CurrentEvent
   /api/event/current/start:

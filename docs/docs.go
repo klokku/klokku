@@ -932,6 +932,71 @@ const docTemplate = `{
                         "XUserId": []
                     }
                 ]
+            },
+            "patch": {
+                "description": "Update only the supplied fields of an existing calendar event",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Calendar"
+                ],
+                "summary": "Partially update a calendar event",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Event UID",
+                        "name": "eventUid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Calendar event fields to update",
+                        "name": "event",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/calendar.EventPatchDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of modified events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/calendar.EventDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Event not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
             }
         },
         "/api/event": {
@@ -960,6 +1025,9 @@ const docTemplate = `{
                                     "type": "integer"
                                 },
                                 "name": {
+                                    "type": "string"
+                                },
+                                "notes": {
                                     "type": "string"
                                 },
                                 "weeklyDuration": {
@@ -1005,6 +1073,63 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/current_event.CurrentEventDTO"
+                        }
+                    },
+                    "403": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No current event",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            }
+        },
+        "/api/event/current/notes": {
+            "patch": {
+                "description": "Set or clear notes on the currently running event. Notes are optional and do not affect time tracking.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "CurrentEvent"
+                ],
+                "summary": "Modify current event notes",
+                "parameters": [
+                    {
+                        "description": "Notes text (empty string clears the note)",
+                        "name": "notes",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/current_event.CurrentEventNotesPatchDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/current_event.CurrentEventDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/rest.ErrorResponse"
                         }
                     },
                     "403": {
@@ -2847,6 +2972,9 @@ const docTemplate = `{
                 "end": {
                     "type": "string"
                 },
+                "notes": {
+                    "type": "string"
+                },
                 "start": {
                     "type": "string"
                 },
@@ -2854,6 +2982,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "uid": {
+                    "type": "string"
+                }
+            }
+        },
+        "calendar.EventPatchDTO": {
+            "type": "object",
+            "properties": {
+                "budgetItemId": {
+                    "type": "integer"
+                },
+                "end": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "string"
+                },
+                "summary": {
                     "type": "string"
                 }
             }
@@ -2956,10 +3104,21 @@ const docTemplate = `{
         "current_event.CurrentEventDTO": {
             "type": "object",
             "properties": {
+                "notes": {
+                    "type": "string"
+                },
                 "planItem": {
                     "$ref": "#/definitions/current_event.PlanItemDTO"
                 },
                 "startTime": {
+                    "type": "string"
+                }
+            }
+        },
+        "current_event.CurrentEventNotesPatchDTO": {
+            "type": "object",
+            "properties": {
+                "notes": {
                     "type": "string"
                 }
             }

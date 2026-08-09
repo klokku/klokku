@@ -27,15 +27,16 @@ func NewEventRepo(db *pgxpool.Pool) Repository {
 
 // ReplaceCurrentEvent replaces the current event with the given event
 func (r *repositoryImpl) ReplaceCurrentEvent(ctx context.Context, userId int, event CurrentEvent) (CurrentEvent, error) {
-	query := `INSERT INTO current_event (budget_item_id, budget_item_name, plan_item_weekly_duration_sec, start_time, user_id) 
-				VALUES ($1, $2, $3, $4, $5) 
+	query := `INSERT INTO current_event (budget_item_id, budget_item_name, plan_item_weekly_duration_sec, start_time, notes, user_id) 
+				VALUES ($1, $2, $3, $4, $5, $6) 
 				ON CONFLICT (user_id) DO UPDATE SET 
 					budget_item_id = EXCLUDED.budget_item_id,
 					budget_item_name = EXCLUDED.budget_item_name,
 					plan_item_weekly_duration_sec = EXCLUDED.plan_item_weekly_duration_sec,
-					start_time = EXCLUDED.start_time`
+					start_time = EXCLUDED.start_time,
+					notes = EXCLUDED.notes`
 
-	_, err := r.db.Exec(ctx, query, event.PlanItem.BudgetItemId, event.PlanItem.Name, event.PlanItem.WeeklyDuration.Seconds(), event.StartTime, userId)
+	_, err := r.db.Exec(ctx, query, event.PlanItem.BudgetItemId, event.PlanItem.Name, event.PlanItem.WeeklyDuration.Seconds(), event.StartTime, event.Notes, userId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
@@ -58,14 +59,14 @@ func (r *repositoryImpl) DeleteCurrentEvent(ctx context.Context, userId int) err
 
 func (r *repositoryImpl) FindCurrentEvent(ctx context.Context, userId int) (CurrentEvent, error) {
 	query := `
-		SELECT id, budget_item_id, budget_item_name, plan_item_weekly_duration_sec, start_time
+		SELECT id, budget_item_id, budget_item_name, plan_item_weekly_duration_sec, start_time, notes
 		FROM current_event e
 		WHERE e.user_id = $1 LIMIT 1`
 
 	var weeklyTime int
 	var event CurrentEvent
 	err := r.db.QueryRow(ctx, query, userId).
-		Scan(&event.Id, &event.PlanItem.BudgetItemId, &event.PlanItem.Name, &weeklyTime, &event.StartTime)
+		Scan(&event.Id, &event.PlanItem.BudgetItemId, &event.PlanItem.Name, &weeklyTime, &event.StartTime, &event.Notes)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return CurrentEvent{}, nil

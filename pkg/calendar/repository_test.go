@@ -58,6 +58,7 @@ func assertEventEqual(t *testing.T, expected Event, actual Event, ignoreUID bool
 	assert.Equal(t, expected.Summary, actual.Summary)
 	assert.Equal(t, expected.StartTime, actual.StartTime)
 	assert.Equal(t, expected.EndTime, actual.EndTime)
+	assert.Equal(t, expected.Notes, actual.Notes)
 	assert.Equal(t, expected.Metadata.BudgetItemId, actual.Metadata.BudgetItemId)
 
 	if !ignoreUID && expected.UID != "" {
@@ -72,6 +73,7 @@ func TestRepositoryImpl_StoreEvent(t *testing.T) {
 	// Given
 	baseTime := time.Now().Truncate(time.Millisecond)
 	testEvent := createTestEvent("Test Event", baseTime, baseTime.Add(time.Hour), 654)
+	testEvent.Notes = "Some notes about the event"
 
 	// When
 	storedEvent, err := repository.StoreEvent(ctx, userId, testEvent)
@@ -106,6 +108,38 @@ func TestRepositoryImpl_GetEventsEmptyResult(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	assert.Empty(t, events)
+}
+
+func TestRepositoryImpl_FindEvent(t *testing.T) {
+	ctx, repository, userId := setupTestRepository(t)
+	baseTime := time.Now().Truncate(time.Millisecond)
+	event := createTestEvent("Find me", baseTime, baseTime.Add(time.Hour), 123)
+	event.Notes = "Found note"
+	stored, err := repository.StoreEvent(ctx, userId, event)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		userId  int
+		uid     string
+		wantErr error
+	}{
+		{name: "finds event for owner", userId: userId, uid: stored.UID},
+		{name: "does not expose event to another user", userId: userId + 1, uid: stored.UID, wantErr: ErrEventNotFound},
+		{name: "returns not found for unknown uid", userId: userId, uid: uuid.NewString(), wantErr: ErrEventNotFound},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			found, err := repository.FindEvent(ctx, test.userId, test.uid)
+			if test.wantErr != nil {
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, stored, found)
+		})
+	}
 }
 
 func TestRepositoryImpl_GetEvents(t *testing.T) {
@@ -404,6 +438,7 @@ func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 		Summary:   "Updated Summary",
 		StartTime: baseTime.Add(15 * time.Minute),
 		EndTime:   baseTime.Add(45 * time.Minute),
+		Notes:     "Updated notes",
 		Metadata: EventMetadata{
 			BudgetItemId: 456,
 		},
@@ -423,6 +458,64 @@ func TestRepositoryImpl_UpdateEvent(t *testing.T) {
 
 	// Check that all fields were updated correctly
 	assertEventEqual(t, updatedEvent, updatedEvents[0], false)
+}
+
+func TestRepositoryImpl_EventNotes(t *testing.T) {
+	// Setup
+	ctx, repository, userId := setupTestRepository(t)
+	baseTime := time.Now().Add(-2 * time.Hour).Truncate(time.Millisecond)
+
+	t.Run("stored event without notes defaults to empty notes", func(t *testing.T) {
+		// Given
+		event := createTestEvent("No notes", baseTime, baseTime.Add(time.Hour), 1)
+
+		// When
+		stored, err := repository.StoreEvent(ctx, userId, event)
+
+		// Then
+		require.NoError(t, err)
+		assert.Empty(t, stored.Notes)
+	})
+
+	t.Run("notes are returned by GetLastEvents", func(t *testing.T) {
+		// Given
+		event := createTestEvent("With notes", baseTime, baseTime.Add(30*time.Minute), 1)
+		event.Notes = "Remember this"
+		_, err := repository.StoreEvent(ctx, userId, event)
+		require.NoError(t, err)
+
+		// When
+		lastEvents, err := repository.GetLastEvents(ctx, userId, 10)
+
+		// Then
+		require.NoError(t, err)
+		require.NotEmpty(t, lastEvents)
+		var found *Event
+		for i, e := range lastEvents {
+			if e.Summary == "With notes" {
+				found = &lastEvents[i]
+				break
+			}
+		}
+		require.NotNil(t, found)
+		assert.Equal(t, "Remember this", found.Notes)
+	})
+
+	t.Run("updating event with empty notes clears the note", func(t *testing.T) {
+		// Given
+		event := createTestEvent("Clearable notes", baseTime, baseTime.Add(time.Hour), 1)
+		event.Notes = "Note to be cleared"
+		stored, err := repository.StoreEvent(ctx, userId, event)
+		require.NoError(t, err)
+
+		// When
+		stored.Notes = ""
+		updated, err := repository.UpdateEvent(ctx, userId, stored)
+
+		// Then
+		require.NoError(t, err)
+		assert.Empty(t, updated.Notes)
+	})
 }
 
 func TestRepositoryImpl_DeleteEvent(t *testing.T) {

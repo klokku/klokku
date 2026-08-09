@@ -7,8 +7,8 @@ import (
 
 // --- Current Event ---
 
-func (c *Client) StartEvent(budgetItemID int, name string, weeklyDuration int) (*CurrentEventDTO, error) {
-	body, err := jsonBody(StartEventRequest{BudgetItemID: budgetItemID, Name: name, WeeklyDuration: weeklyDuration})
+func (c *Client) StartEvent(budgetItemID int, name string, weeklyDuration int, notes string) (*CurrentEventDTO, error) {
+	body, err := jsonBody(StartEventRequest{BudgetItemID: budgetItemID, Name: name, WeeklyDuration: weeklyDuration, Notes: notes})
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +34,18 @@ func (c *Client) AdjustCurrentEventStart(startTime string) (*CurrentEventDTO, er
 	}
 	var event CurrentEventDTO
 	if err := c.Patch("/api/event/current/start", body, &event); err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+func (c *Client) UpdateCurrentEventNotes(notes string) (*CurrentEventDTO, error) {
+	body, err := jsonBody(UpdateNotesRequest{Notes: notes})
+	if err != nil {
+		return nil, err
+	}
+	var event CurrentEventDTO
+	if err := c.Patch("/api/event/current/notes", body, &event); err != nil {
 		return nil, err
 	}
 	return &event, nil
@@ -70,13 +82,13 @@ func (c *Client) CreateCalendarEvent(event CalendarEventDTO) ([]CalendarEventDTO
 	return events, nil
 }
 
-func (c *Client) UpdateCalendarEvent(eventUID string, event CalendarEventDTO) ([]CalendarEventDTO, error) {
+func (c *Client) UpdateCalendarEvent(eventUID string, event CalendarEventPatchDTO) ([]CalendarEventDTO, error) {
 	body, err := jsonBody(event)
 	if err != nil {
 		return nil, err
 	}
 	var events []CalendarEventDTO
-	if err := c.Put("/api/calendar/event/"+url.PathEscape(eventUID), body, &events); err != nil {
+	if err := c.Patch("/api/calendar/event/"+url.PathEscape(eventUID), body, &events); err != nil {
 		return nil, err
 	}
 	return events, nil

@@ -17,6 +17,7 @@ type Service interface {
 	FindCurrentEvent(ctx context.Context) (CurrentEvent, error)
 	StartNewEvent(ctx context.Context, event CurrentEvent) (CurrentEvent, error)
 	ModifyCurrentEventStartTime(ctx context.Context, newStartTime time.Time) (CurrentEvent, error)
+	ModifyCurrentEventNotes(ctx context.Context, notes string) (CurrentEvent, error)
 }
 
 type EventServiceImpl struct {
@@ -72,6 +73,7 @@ func (s *EventServiceImpl) storeEventToCalendar(ctx context.Context, event Curre
 		Summary:   event.PlanItem.Name,
 		StartTime: event.StartTime,
 		EndTime:   endTime,
+		Notes:     event.Notes,
 		Metadata: calendar.EventMetadata{
 			BudgetItemId: event.PlanItem.BudgetItemId,
 		},
@@ -141,5 +143,24 @@ func (s *EventServiceImpl) ModifyCurrentEventStartTime(ctx context.Context, newS
 	}
 
 	currentEvent.StartTime = newStartTime
+	return s.repo.ReplaceCurrentEvent(ctx, userId, currentEvent)
+}
+
+func (s *EventServiceImpl) ModifyCurrentEventNotes(ctx context.Context, notes string) (CurrentEvent, error) {
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return CurrentEvent{}, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	currentEvent, err := s.FindCurrentEvent(ctx)
+	if err != nil {
+		return CurrentEvent{}, err
+	}
+	if currentEvent.Id == 0 {
+		log.Infof("No current event to modify notes for user %d", userId)
+		return CurrentEvent{}, ErrNoCurrentEvent
+	}
+
+	currentEvent.Notes = notes
 	return s.repo.ReplaceCurrentEvent(ctx, userId, currentEvent)
 }

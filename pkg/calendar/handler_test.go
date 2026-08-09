@@ -16,6 +16,7 @@ import (
 	"github.com/klokku/klokku/internal/event_bus"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func contextWithUser(ctx context.Context, userId int) context.Context {
@@ -253,6 +254,7 @@ func TestEventToDTO(t *testing.T) {
 		Summary:   "Test Event",
 		StartTime: time.Date(2023, 1, 1, 10, 0, 0, 0, location),
 		EndTime:   time.Date(2023, 1, 1, 11, 0, 0, 0, location),
+		Notes:     "Some notes",
 		Metadata: EventMetadata{
 			BudgetItemId: 123,
 		},
@@ -266,6 +268,7 @@ func TestEventToDTO(t *testing.T) {
 	assert.Equal(t, "Test Event", dto.Summary)
 	assert.Equal(t, time.Date(2023, 1, 1, 10, 0, 0, 0, location), dto.StartTime)
 	assert.Equal(t, time.Date(2023, 1, 1, 11, 0, 0, 0, location), dto.EndTime)
+	assert.Equal(t, "Some notes", dto.Notes)
 	assert.Equal(t, 123, dto.BudgetItemId)
 }
 
@@ -319,6 +322,7 @@ func TestUpdateEvent(t *testing.T) {
 		Summary:      updatedSummary,
 		StartTime:    updatedStartTime,
 		EndTime:      updatedEndTime,
+		Notes:        "Updated notes",
 		BudgetItemId: updatedBudgetItemId,
 	}
 
@@ -348,6 +352,7 @@ func TestUpdateEvent(t *testing.T) {
 	assert.Equal(t, updatedStartTime.Unix(), returnedUpdatedEvents[0].StartTime.Unix(), "StartTime should be updated")
 	assert.Equal(t, updatedEndTime.Unix(), returnedUpdatedEvents[0].EndTime.Unix(), "EndTime should be updated")
 	assert.Equal(t, updatedBudgetItemId, returnedUpdatedEvents[0].BudgetItemId, "BudgetItemId should be updated")
+	assert.Equal(t, "Updated notes", returnedUpdatedEvents[0].Notes, "Notes should be updated")
 
 	// 3. Verify the update persisted by getting the event
 	from := time.Date(2025, 1, 1, 0, 0, 0, 0, location)
@@ -382,11 +387,76 @@ func TestUpdateEvent(t *testing.T) {
 			assert.Equal(t, updatedStartTime.Unix(), event.StartTime.Unix())
 			assert.Equal(t, updatedEndTime.Unix(), event.EndTime.Unix())
 			assert.Equal(t, updatedBudgetItemId, event.BudgetItemId)
+			assert.Equal(t, "Updated notes", event.Notes)
 			break
 		}
 	}
 
 	assert.True(t, found, "Updated event should be returned when querying events")
+}
+
+func TestPatchEvent(t *testing.T) {
+	handler, teardown := setupHandlerTest(t)
+	defer teardown()
+	userId := 123
+	start := time.Date(2025, 1, 1, 10, 0, 0, 0, location)
+
+	original := EventDTO{
+		Summary:      "Original",
+		StartTime:    start,
+		EndTime:      start.Add(time.Hour),
+		Notes:        "Original note",
+		BudgetItemId: 101,
+	}
+	body, err := json.Marshal(original)
+	require.NoError(t, err)
+	createReq := httptest.NewRequest(http.MethodPost, "/event", bytes.NewBuffer(body))
+	createW := httptest.NewRecorder()
+	handler.CreateEvent(createW, createReq.WithContext(contextWithUser(context.Background(), userId)))
+	require.Equal(t, http.StatusCreated, createW.Code)
+	var created []EventDTO
+	require.NoError(t, json.NewDecoder(createW.Body).Decode(&created))
+	require.Len(t, created, 1)
+
+	tests := []struct {
+		name       string
+		uid        string
+		userId     int
+		body       string
+		wantStatus int
+		wantNotes  string
+	}{
+		{name: "patches notes only", uid: created[0].UID, body: `{"notes":"Patched"}`, wantStatus: http.StatusOK, wantNotes: "Patched"},
+		{name: "clears notes", uid: created[0].UID, body: `{"notes":""}`, wantStatus: http.StatusOK, wantNotes: ""},
+		{name: "rejects empty patch", uid: created[0].UID, body: `{}`, wantStatus: http.StatusBadRequest},
+		{name: "rejects malformed body", uid: created[0].UID, body: `{`, wantStatus: http.StatusBadRequest},
+		{name: "rejects invalid merged event", uid: created[0].UID, body: `{"end":"2025-01-01T08:00:00Z"}`, wantStatus: http.StatusBadRequest},
+		{name: "returns not found", uid: uuid.NewString(), body: `{"notes":"Missing"}`, wantStatus: http.StatusNotFound},
+		{name: "does not expose another user's event", uid: created[0].UID, userId: userId + 1, body: `{"notes":"Forbidden"}`, wantStatus: http.StatusNotFound},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPatch, "/event/"+test.uid, bytes.NewBufferString(test.body))
+			req = mux.SetURLVars(req, map[string]string{"eventUid": test.uid})
+			w := httptest.NewRecorder()
+			requestUserId := test.userId
+			if requestUserId == 0 {
+				requestUserId = userId
+			}
+			handler.PatchEvent(w, req.WithContext(contextWithUser(req.Context(), requestUserId)))
+			assert.Equal(t, test.wantStatus, w.Code)
+			if test.wantStatus == http.StatusOK {
+				var patched []EventDTO
+				require.NoError(t, json.NewDecoder(w.Body).Decode(&patched))
+				require.Len(t, patched, 1)
+				assert.Equal(t, test.wantNotes, patched[0].Notes)
+				assert.Equal(t, original.StartTime.Unix(), patched[0].StartTime.Unix())
+				assert.Equal(t, original.EndTime.Unix(), patched[0].EndTime.Unix())
+				assert.Equal(t, original.BudgetItemId, patched[0].BudgetItemId)
+			}
+		})
+	}
 }
 
 func TestDeleteEvent(t *testing.T) {
