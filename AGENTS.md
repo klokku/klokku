@@ -132,3 +132,13 @@ Released via GoReleaser (`.goreleaser.yaml`) on unprefixed Git tags.
 3. `go test ./... -v` (Docker running)
 4. `make swagger` if you touched handlers, and commit regenerated docs.
 5. Confirm every new migration is backward compatible with the previously deployed application version.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues, accessed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context layout - one root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
