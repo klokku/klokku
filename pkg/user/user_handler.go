@@ -201,6 +201,16 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	updatedUser, err := h.userService.UpdateUser(r.Context(), dtoToUser(user))
 	if err != nil {
+		if errors.Is(err, ErrUserDataInvalid) {
+			w.WriteHeader(http.StatusBadRequest)
+			encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
+				Error: "Invalid user data",
+			})
+			if encodeErr != nil {
+				http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
