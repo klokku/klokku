@@ -1,8 +1,15 @@
 package calendar
 
 import (
+	"errors"
+	"fmt"
 	"time"
+	"unicode/utf8"
 )
+
+const MaxNotesLength = 10_000
+
+var ErrNotesTooLong = errors.New("notes exceed maximum length")
 
 type Event struct {
 	UID       string
@@ -14,7 +21,6 @@ type Event struct {
 }
 
 type EventPatch struct {
-	Summary      *string
 	StartTime    *time.Time
 	EndTime      *time.Time
 	Notes        *string
@@ -23,4 +29,12 @@ type EventPatch struct {
 
 type EventMetadata struct {
 	BudgetItemId int `json:"budgetItemId"`
+}
+
+func ValidateNotes(notes string) error {
+	length := utf8.RuneCountInString(notes)
+	if length > MaxNotesLength {
+		return fmt.Errorf("%w: got %d characters, maximum is %d", ErrNotesTooLong, length, MaxNotesLength)
+	}
+	return nil
 }

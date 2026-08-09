@@ -151,7 +151,7 @@ klokku-cli event list --from 2026-04-01T00:00:00Z --to 2026-04-07T23:59:59Z
 klokku-cli event recent --last 5
 klokku-cli event create --summary "Sport" --start 2026-04-05T09:00:00Z --end 2026-04-05T10:00:00Z --budget-item-id 1
 klokku-cli event create --summary "Sport" --start ... --end ... --budget-item-id 1 --notes "Morning run"
-klokku-cli event update <eventUid> --summary "Sport" --start ... --end ...
+klokku-cli event update <eventUid> --start ... --end ...
 klokku-cli event update <eventUid> --notes "Updated context"   # --notes "" clears the note
 klokku-cli event delete <eventUid>
 ```

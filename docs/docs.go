@@ -3000,9 +3000,6 @@ const docTemplate = `{
                 },
                 "start": {
                     "type": "string"
-                },
-                "summary": {
-                    "type": "string"
                 }
             }
         },

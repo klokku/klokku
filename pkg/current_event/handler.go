@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/klokku/klokku/internal/rest"
+	"github.com/klokku/klokku/pkg/calendar"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -88,7 +89,11 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 
 	storedEvent, err := e.eventService.StartNewEvent(r.Context(), *event)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, calendar.ErrNotesTooLong) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
@@ -228,6 +233,10 @@ func (e *EventHandler) ModifyCurrentEventNotes(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		if errors.Is(err, ErrNoCurrentEvent) {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, calendar.ErrNotesTooLong) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,6 +245,26 @@ func TestGetEvents_EmptyResults(t *testing.T) {
 	err := json.NewDecoder(w.Body).Decode(&dtos)
 	assert.NoError(t, err)
 	assert.Empty(t, dtos)
+}
+
+func TestCreateEvent_NotesTooLong(t *testing.T) {
+	handler, teardown := setupHandlerTest(t)
+	defer teardown()
+	event := EventDTO{
+		Summary:      "Too long",
+		StartTime:    time.Now(),
+		EndTime:      time.Now().Add(time.Hour),
+		Notes:        strings.Repeat("a", MaxNotesLength+1),
+		BudgetItemId: 101,
+	}
+	body, err := json.Marshal(event)
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/event", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+
+	handler.CreateEvent(w, req.WithContext(contextWithUser(context.Background(), 1)))
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestEventToDTO(t *testing.T) {

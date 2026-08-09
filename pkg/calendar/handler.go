@@ -26,7 +26,6 @@ type EventDTO struct {
 }
 
 type EventPatchDTO struct {
-	Summary      *string    `json:"summary"`
 	StartTime    *time.Time `json:"start"`
 	EndTime      *time.Time `json:"end"`
 	Notes        *string    `json:"notes"`
@@ -119,7 +118,11 @@ func (h *Handler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 
 	addedEvents, err := h.calendar.AddStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrNotesTooLong) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
@@ -161,7 +164,11 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 
 	modifiedEvents, err := h.calendar.ModifyStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrNotesTooLong) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	var eventDTOs []EventDTO
