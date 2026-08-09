@@ -137,8 +137,11 @@ klokku-cli week item reset <weeklyItemId>          # Reset single item to budget
 
 ```sh
 klokku-cli event start <budgetItemId>              # Start tracking a budget item
+klokku-cli event start <budgetItemId> --notes "Drafting the report"  # Start with notes
 klokku-cli event current                           # See what's currently being tracked
 klokku-cli event current adjust-start --time 2026-04-05T09:00:00Z  # Fix start time
+klokku-cli event current set-notes "Drafting the report"  # Set/replace notes on the current event
+klokku-cli event current set-notes ""              # Clear notes from the current event
 ```
 
 ### Calendar Events (History)
@@ -147,9 +150,15 @@ klokku-cli event current adjust-start --time 2026-04-05T09:00:00Z  # Fix start t
 klokku-cli event list --from 2026-04-01T00:00:00Z --to 2026-04-07T23:59:59Z
 klokku-cli event recent --last 5
 klokku-cli event create --summary "Sport" --start 2026-04-05T09:00:00Z --end 2026-04-05T10:00:00Z --budget-item-id 1
+klokku-cli event create --summary "Sport" --start ... --end ... --budget-item-id 1 --notes "Morning run"
 klokku-cli event update <eventUid> --summary "Sport" --start ... --end ...
+klokku-cli event update <eventUid> --notes "Updated context"   # --notes "" clears the note
 klokku-cli event delete <eventUid>
 ```
+
+Notes are optional free-text annotations on events.
+They never affect durations, statistics, or reports.
+`event update` applies only the supplied flags, so omitted fields are preserved.
 
 ### Statistics
 

@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -20,7 +21,16 @@ type EventDTO struct {
 	Summary      string    `json:"summary"`
 	StartTime    time.Time `json:"start"`
 	EndTime      time.Time `json:"end"`
+	Notes        string    `json:"notes"`
 	BudgetItemId int       `json:"budgetItemId"`
+}
+
+type EventPatchDTO struct {
+	Summary      *string    `json:"summary"`
+	StartTime    *time.Time `json:"start"`
+	EndTime      *time.Time `json:"end"`
+	Notes        *string    `json:"notes"`
+	BudgetItemId *int       `json:"budgetItemId"`
 }
 
 func NewHandler(s *Service) *Handler {
@@ -145,6 +155,9 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if eventUid := mux.Vars(r)["eventUid"]; eventUid != "" {
+		eventDTO.UID = eventUid
+	}
 
 	modifiedEvents, err := h.calendar.ModifyStickyEvent(r.Context(), dtoToEvent(eventDTO))
 	if err != nil {
@@ -161,6 +174,53 @@ func (h *Handler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(eventDTOs); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+}
+
+// PatchEvent godoc
+// @Summary Partially update a calendar event
+// @Description Update only the supplied fields of an existing calendar event
+// @Tags Calendar
+// @Accept json
+// @Produce json
+// @Param eventUid path string true "Event UID"
+// @Param event body EventPatchDTO true "Calendar event fields to update"
+// @Success 200 {array} EventDTO "Array of modified events"
+// @Failure 400 {string} string "Bad Request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "Event not found"
+// @Router /api/calendar/event/{eventUid} [patch]
+// @Security XUserId
+func (h *Handler) PatchEvent(w http.ResponseWriter, r *http.Request) {
+	var eventPatchDTO EventPatchDTO
+	if err := json.NewDecoder(r.Body).Decode(&eventPatchDTO); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	eventUid := mux.Vars(r)["eventUid"]
+	modifiedEvents, err := h.calendar.PatchEvent(r.Context(), eventUid, dtoToEventPatch(eventPatchDTO))
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrEmptyEventPatch), errors.Is(err, ErrInvalidEventPatch):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrEventNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	eventDTOs := make([]EventDTO, 0, len(modifiedEvents))
+	for _, event := range modifiedEvents {
+		eventDTOs = append(eventDTOs, eventToDTO(event))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(eventDTOs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -192,6 +252,7 @@ func eventToDTO(e Event) EventDTO {
 		Summary:      e.Summary,
 		StartTime:    e.StartTime,
 		EndTime:      e.EndTime,
+		Notes:        e.Notes,
 		BudgetItemId: e.Metadata.BudgetItemId,
 	}
 }
@@ -202,8 +263,13 @@ func dtoToEvent(e EventDTO) Event {
 		Summary:   e.Summary,
 		StartTime: e.StartTime,
 		EndTime:   e.EndTime,
+		Notes:     e.Notes,
 		Metadata:  EventMetadata{BudgetItemId: e.BudgetItemId},
 	}
+}
+
+func dtoToEventPatch(dto EventPatchDTO) EventPatch {
+	return EventPatch(dto)
 }
 
 // GetLastEvents godoc

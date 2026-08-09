@@ -50,6 +50,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	// Events
 	r.HandleFunc("/api/event", deps.CurrentEventHandler.StartEvent).Methods("POST")
 	r.HandleFunc("/api/event/current/start", deps.CurrentEventHandler.ModifyCurrentEventStartTime).Methods("PATCH")
+	r.HandleFunc("/api/event/current/notes", deps.CurrentEventHandler.ModifyCurrentEventNotes).Methods("PATCH")
 	r.HandleFunc("/api/event/current", deps.CurrentEventHandler.GetCurrentEvent).Methods("GET")
 
 	// Stats
@@ -75,6 +76,7 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 	r.HandleFunc("/api/calendar/event", deps.KlokkuCalendarHandler.CreateEvent).Methods("POST")
 	r.HandleFunc("/api/calendar/event/recent", deps.KlokkuCalendarHandler.GetLastEvents).Methods("GET").Queries("last", "{last}")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.UpdateEvent).Methods("PUT")
+	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.PatchEvent).Methods("PATCH")
 	r.HandleFunc("/api/calendar/event/{eventUid}", deps.KlokkuCalendarHandler.DeleteEvent).Methods("DELETE")
 
 	// ClickUp integration

@@ -79,6 +79,7 @@ func (c *StubCalendar) ModifyEvent(ctx context.Context, event Event) ([]Event, e
 	foundEvent.Metadata = eventToUpdate.Metadata
 	foundEvent.StartTime = eventToUpdate.StartTime
 	foundEvent.EndTime = eventToUpdate.EndTime
+	foundEvent.Notes = eventToUpdate.Notes
 	c.data[foundEvent.UID] = foundEvent
 
 	for _, e := range eventsToAdd {

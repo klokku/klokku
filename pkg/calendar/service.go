@@ -12,7 +12,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var errPlanItemNotFound = errors.New("plan item not found")
+var (
+	errPlanItemNotFound  = errors.New("plan item not found")
+	ErrEmptyEventPatch   = errors.New("event patch must contain at least one field")
+	ErrInvalidEventPatch = errors.New("event patch produces an invalid event")
+)
 
 type PlanItemsProviderFunc func(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error)
 
@@ -103,12 +107,14 @@ func splitEventIfNeeded(event *Event, userTimezone string) ([]Event, error) {
 			Summary:   event.Summary,
 			StartTime: event.StartTime,
 			EndTime:   endOfDay(event.StartTime, location),
+			Notes:     event.Notes,
 			Metadata:  event.Metadata,
 		}
 		eventB := Event{
 			Summary:   event.Summary,
 			StartTime: startOfNextDay(event.StartTime, location),
 			EndTime:   event.EndTime,
+			Notes:     event.Notes,
 			Metadata:  event.Metadata,
 		}
 		resultEvents := []Event{eventA}
@@ -124,6 +130,7 @@ func splitEventIfNeeded(event *Event, userTimezone string) ([]Event, error) {
 				Summary:   event.Summary,
 				StartTime: event.StartTime,
 				EndTime:   event.EndTime,
+				Notes:     event.Notes,
 				Metadata:  event.Metadata,
 			},
 		}, nil
@@ -200,6 +207,10 @@ func (s *Service) GetEvents(ctx context.Context, from time.Time, to time.Time) (
 }
 
 func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error) {
+	return s.modifyEvent(ctx, event, false)
+}
+
+func (s *Service) modifyEvent(ctx context.Context, event Event, preserveSummary bool) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -221,11 +232,13 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 		eventToUpdate := events[0]
 		eventsToAdd := events[1:]
 
-		planItemName, err := s.getEventName(ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
-		if err != nil {
-			return err
+		if !preserveSummary {
+			planItemName, err := s.getEventName(ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
+			if err != nil {
+				return err
+			}
+			eventToUpdate.Summary = planItemName
 		}
-		eventToUpdate.Summary = planItemName
 
 		updatedEvent, err := repo.UpdateEvent(ctx, userId, eventToUpdate)
 		if err != nil {
@@ -234,11 +247,13 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 		}
 		updatedEvents = append(updatedEvents, updatedEvent)
 		for _, e := range eventsToAdd {
-			planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
-			if err != nil {
-				return err
+			if !preserveSummary {
+				planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
+				if err != nil {
+					return err
+				}
+				e.Summary = planItemName
 			}
-			e.Summary = planItemName
 			newEvent, err := repo.StoreEvent(ctx, userId, e)
 			if err != nil {
 				log.Errorf("failed to store event: %v", err)
@@ -253,6 +268,56 @@ func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error)
 	}
 
 	return updatedEvents, nil
+}
+
+func (s *Service) PatchEvent(ctx context.Context, eventUid string, patch EventPatch) ([]Event, error) {
+	if patch.Summary == nil && patch.StartTime == nil && patch.EndTime == nil && patch.Notes == nil && patch.BudgetItemId == nil {
+		return nil, ErrEmptyEventPatch
+	}
+
+	userId, err := user.CurrentId(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	event, err := s.repo.FindEvent(ctx, userId, eventUid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find event: %w", err)
+	}
+
+	timeChanged := false
+	if patch.Summary != nil {
+		event.Summary = *patch.Summary
+	}
+	if patch.StartTime != nil {
+		timeChanged = !event.StartTime.Equal(*patch.StartTime)
+		event.StartTime = *patch.StartTime
+	}
+	if patch.EndTime != nil {
+		timeChanged = timeChanged || !event.EndTime.Equal(*patch.EndTime)
+		event.EndTime = *patch.EndTime
+	}
+	if patch.Notes != nil {
+		event.Notes = *patch.Notes
+	}
+	if patch.BudgetItemId != nil {
+		event.Metadata.BudgetItemId = *patch.BudgetItemId
+	}
+	if err := validateEvent(event); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidEventPatch, err)
+	}
+
+	if timeChanged {
+		return s.modifyStickyEvent(ctx, event, patch.Summary != nil)
+	}
+	if patch.BudgetItemId == nil {
+		updatedEvent, err := s.repo.UpdateEvent(ctx, userId, event)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update event: %w", err)
+		}
+		return []Event{updatedEvent}, nil
+	}
+	return s.modifyEvent(ctx, event, patch.Summary != nil)
 }
 
 func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
@@ -275,6 +340,10 @@ func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetI
 }
 
 func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) ([]Event, error) {
+	return s.modifyStickyEvent(ctx, event, false)
+}
+
+func (s *Service) modifyStickyEvent(ctx context.Context, event Event, preserveSummary bool) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -306,7 +375,7 @@ func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) ([]Event, 
 			}
 		}
 
-		modifiedEvents, err = s.ModifyEvent(ctx, event)
+		modifiedEvents, err = s.modifyEvent(ctx, event, preserveSummary)
 		if err != nil {
 			return fmt.Errorf("failed to modify event: %w", err)
 		}
@@ -342,6 +411,7 @@ func calculateStickyEventsChanges(overlappingEvents []Event, event Event) ([]Eve
 					Summary:   overlappingEvent.Summary,
 					StartTime: event.EndTime,
 					EndTime:   overlappingEvent.EndTime,
+					Notes:     overlappingEvent.Notes,
 					Metadata:  overlappingEvent.Metadata,
 				}
 				eventsToCreate = append(eventsToCreate, newEvent)

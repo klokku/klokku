@@ -16,12 +16,16 @@ import (
 type Repository interface {
 	WithTransaction(ctx context.Context, fn func(repo Repository) error) error
 	StoreEvent(ctx context.Context, userId int, event Event) (Event, error)
+	FindEvent(ctx context.Context, userId int, eventUid string) (Event, error)
 	GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error)
 	GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error)
 	UpdateEvent(ctx context.Context, userId int, event Event) (Event, error)
 	DeleteEvent(ctx context.Context, userId int, eventId string) error
 	GetEarliestEventTimeForBudgetItems(ctx context.Context, userId int, budgetItemIds []int) (time.Time, bool, error)
 }
+
+var ErrEventNotFound = errors.New("calendar event not found")
+
 type repositoryImpl struct {
 	db *pgxpool.Pool
 	tx pgx.Tx
@@ -76,9 +80,10 @@ func (r *repositoryImpl) StoreEvent(ctx context.Context, userId int, event Event
                             summary,
                             start_time,
                             end_time,
+                            notes,
                             budget_item_id,
                             user_id
-						) VALUES ($1, $2, $3, $4, $5, $6) RETURNING uid, summary, start_time, end_time, budget_item_id`
+						) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING uid, summary, start_time, end_time, notes, budget_item_id`
 
 	uid := uuid.NewString()
 	var createdEvent Event
@@ -87,9 +92,10 @@ func (r *repositoryImpl) StoreEvent(ctx context.Context, userId int, event Event
 		event.Summary,
 		event.StartTime,
 		event.EndTime,
+		event.Notes,
 		event.Metadata.BudgetItemId,
 		userId,
-	).Scan(&createdEvent.UID, &createdEvent.Summary, &createdEvent.StartTime, &createdEvent.EndTime, &createdEvent.Metadata.BudgetItemId)
+	).Scan(&createdEvent.UID, &createdEvent.Summary, &createdEvent.StartTime, &createdEvent.EndTime, &createdEvent.Notes, &createdEvent.Metadata.BudgetItemId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)
@@ -99,11 +105,35 @@ func (r *repositoryImpl) StoreEvent(ctx context.Context, userId int, event Event
 	return createdEvent, nil
 }
 
+func (r *repositoryImpl) FindEvent(ctx context.Context, userId int, eventUid string) (Event, error) {
+	query := `SELECT uid, summary, start_time, end_time, notes, budget_item_id
+				FROM calendar_event
+				WHERE user_id = $1 AND uid = $2`
+
+	var event Event
+	err := r.getQueryer().QueryRow(ctx, query, userId, eventUid).Scan(
+		&event.UID,
+		&event.Summary,
+		&event.StartTime,
+		&event.EndTime,
+		&event.Notes,
+		&event.Metadata.BudgetItemId,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Event{}, ErrEventNotFound
+		}
+		return Event{}, fmt.Errorf("could not find calendar event: %w", err)
+	}
+
+	return event, nil
+}
+
 func (r *repositoryImpl) GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error) {
 	// Return all events that overlap with the given period:
 	// 1. Events that start before the end of the period (start_time <= to)
 	// 2. AND end after the start of the period (end_time >= from)
-	query := `SELECT uid, summary, start_time, end_time, budget_item_id 
+	query := `SELECT uid, summary, start_time, end_time, notes, budget_item_id 
               FROM calendar_event 
               WHERE user_id = $1 
                 AND start_time <= $2 
@@ -121,7 +151,7 @@ func (r *repositoryImpl) GetEvents(ctx context.Context, userId int, from, to tim
 	events := make([]Event, 0, 10)
 	for rows.Next() {
 		var event Event
-		err := rows.Scan(&event.UID, &event.Summary, &event.StartTime, &event.EndTime, &event.Metadata.BudgetItemId)
+		err := rows.Scan(&event.UID, &event.Summary, &event.StartTime, &event.EndTime, &event.Notes, &event.Metadata.BudgetItemId)
 		if err != nil {
 			err := fmt.Errorf("could not scan row: %w", err)
 			log.Error(err)
@@ -134,7 +164,7 @@ func (r *repositoryImpl) GetEvents(ctx context.Context, userId int, from, to tim
 
 // GetLastEvents retrieves the most recent calendar events for a specific user, limited by the specified number of records.
 func (r *repositoryImpl) GetLastEvents(ctx context.Context, userId int, limit int) ([]Event, error) {
-	query := `SELECT uid, summary, start_time, end_time, budget_item_id
+	query := `SELECT uid, summary, start_time, end_time, notes, budget_item_id
 				FROM calendar_event 
 				WHERE user_id = $1 AND
 				      end_time <= $2
@@ -152,7 +182,7 @@ func (r *repositoryImpl) GetLastEvents(ctx context.Context, userId int, limit in
 	events := make([]Event, 0, limit)
 	for rows.Next() {
 		var event Event
-		err := rows.Scan(&event.UID, &event.Summary, &event.StartTime, &event.EndTime, &event.Metadata.BudgetItemId)
+		err := rows.Scan(&event.UID, &event.Summary, &event.StartTime, &event.EndTime, &event.Notes, &event.Metadata.BudgetItemId)
 		if err != nil {
 			err := fmt.Errorf("could not scan row: %w", err)
 			log.Error(err)
@@ -181,17 +211,18 @@ func (r *repositoryImpl) GetEarliestEventTimeForBudgetItems(ctx context.Context,
 
 func (r *repositoryImpl) UpdateEvent(ctx context.Context, userId int, event Event) (Event, error) {
 	query := `UPDATE calendar_event 
-				SET summary = $1, start_time = $2, end_time = $3, budget_item_id = $4 
-				WHERE uid = $5 AND user_id = $6
-				RETURNING uid, summary, start_time, end_time, budget_item_id`
+				SET summary = $1, start_time = $2, end_time = $3, notes = $4, budget_item_id = $5 
+				WHERE uid = $6 AND user_id = $7
+				RETURNING uid, summary, start_time, end_time, notes, budget_item_id`
 	var updatedEvent Event
 	err := r.getQueryer().QueryRow(ctx, query,
 		event.Summary,
 		event.StartTime,
 		event.EndTime,
+		event.Notes,
 		event.Metadata.BudgetItemId,
 		event.UID,
-		userId).Scan(&updatedEvent.UID, &updatedEvent.Summary, &updatedEvent.StartTime, &updatedEvent.EndTime, &updatedEvent.Metadata.BudgetItemId)
+		userId).Scan(&updatedEvent.UID, &updatedEvent.Summary, &updatedEvent.StartTime, &updatedEvent.EndTime, &updatedEvent.Notes, &updatedEvent.Metadata.BudgetItemId)
 	if err != nil {
 		err := fmt.Errorf("could not execute query: %v", err)
 		log.Error(err)

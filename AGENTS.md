@@ -16,7 +16,7 @@ The frontend lives in a separate repository (`klokku-ui`) and is optionally serv
 
 - **Language**: Go 1.26+ (module path `github.com/klokku/klokku`).
 - **Database**: PostgreSQL 18, accessed via `pgx/v5` connection pool.
-- **Migrations**: `golang-migrate` v4, files in `/migrations` (numbered `NNNN_description.up.sql` / `.down.sql`).
+- **Migrations**: `golang-migrate` v4, forward-only files in `/migrations` (numbered `NNNN_description.up.sql`).
 - **HTTP**: Gorilla Mux.
 - **Config**: koanf (YAML + `KLOKKU_`-prefixed env vars), defined in `internal/config/config.go`.
 - **Logging**: logrus, imported as `log`.
@@ -55,8 +55,8 @@ See `contributing/architecture.md` and `contributing/guidelines.md` for the full
 
 - `/pkg/` - public domain packages, organized by feature (`budget_plan`, `calendar`, `current_event`, `stats`, `user`, `weekly_plan`, `webhook`, `clickup`, `calendar_provider`, `budget_plan_report`). Each is importable by other projects.
 - `/internal/` - private code: `app` (wiring, routes, middleware), `config`, `database`, `event_bus`, `rest` (HTTP helpers), `cli` (CLI commands), `test_utils`, `utils`.
-- `/migrations/` - golang-migrate up/down SQL files.
-- `/db/init.sql` - full schema for fresh DB installs (Docker Compose and testcontainers init).
+- `/migrations/` - forward-only golang-migrate SQL files; all table schemas are created through migrations.
+- `/db/init.sql` - PostgreSQL database/schema bootstrap used before migrations run.
 - `/contributing/`, `/docs/`, `/scripts/`, `/skills/` - supporting files.
 
 Each domain package follows a strict four-file layering:
@@ -86,8 +86,16 @@ Follow the existing pattern end-to-end:
 5. **Wiring**: instantiate the new repo/service/handler in `internal/app/dependencies.go` `BuildDependencies` and add fields to the `Dependencies` struct.
 6. **Routes**: register the route in `internal/app/routes.go` under the `/api/...` prefix.
 7. **Swagger**: run `make swagger` to regenerate `/docs` after adding/changing annotations. Commit the regenerated `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`.
-8. **Migrations** (if schema changes): add `migrations/NNNN_description.up.sql` and `.down.sql`, AND mirror the change in `db/init.sql` so fresh installs and testcontainers stay consistent. Both must always agree.
+8. **Migrations** (if schema changes): add a backward-compatible `migrations/NNNN_description.up.sql`. Do not duplicate table definitions in `db/init.sql`.
 9. **Tests**: add table-driven tests. Use stubs in `service_test.go` for logic; use testcontainers in `repository_test.go` for SQL. Name tests `Test<Type>_<Scenario>`.
+
+## Migration Compatibility
+
+- Migrations are forward-only and must remain compatible with both the currently deployed application and the next application version.
+- Prefer additive changes: new nullable columns, columns with safe defaults, new tables, and parallel indexes or constraints.
+- Use an expand-migrate-contract sequence for incompatible schema changes: expand the schema, deploy code that can use both representations and backfill data, then contract only after every old application version has been retired.
+- Never rename or drop a column, remove a table, or tighten a constraint in the same release that stops using the old schema.
+- Fresh installations bootstrap PostgreSQL with `db/init.sql` and then apply the complete migration sequence.
 
 ## Conventions (from `contributing/guidelines.md`)
 
@@ -123,4 +131,4 @@ Released via GoReleaser (`.goreleaser.yaml`) on unprefixed Git tags.
 2. `make cilint` (or `golangci-lint run`)
 3. `go test ./... -v` (Docker running)
 4. `make swagger` if you touched handlers, and commit regenerated docs.
-5. Confirm migrations + `db/init.sql` agree if you changed the schema.
+5. Confirm every new migration is backward compatible with the previously deployed application version.
