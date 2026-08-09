@@ -2,10 +2,12 @@ package current_event
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/klokku/klokku/internal/test_utils"
+	"github.com/klokku/klokku/pkg/calendar"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -58,4 +60,8 @@ func TestRepositoryImpl_CurrentEventNotes(t *testing.T) {
 	otherUserEvent, err := repository.FindCurrentEvent(ctx, 2)
 	require.NoError(t, err)
 	assert.Zero(t, otherUserEvent.Id)
+
+	event.Notes = strings.Repeat("a", calendar.MaxNotesLength+1)
+	_, err = repository.ReplaceCurrentEvent(ctx, 1, event)
+	require.Error(t, err)
 }

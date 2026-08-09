@@ -2994,9 +2994,6 @@
                 },
                 "start": {
                     "type": "string"
-                },
-                "summary": {
-                    "type": "string"
                 }
             }
         },

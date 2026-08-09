@@ -761,15 +761,6 @@ func TestService_PatchEvent(t *testing.T) {
 			wantSummary: "Test BudgetItem 1",
 		},
 		{
-			name:        "updates summary",
-			patch:       EventPatch{Summary: stringPtr("Custom summary")},
-			wantNotes:   "Original note",
-			wantSummary: "Custom summary",
-			wantStart:   start,
-			wantEnd:     start.Add(time.Hour),
-			wantItem:    101,
-		},
-		{
 			name:        "updates time and budget item",
 			patch:       EventPatch{StartTime: timePtr(start.Add(15 * time.Minute)), EndTime: timePtr(start.Add(2 * time.Hour)), BudgetItemId: intPtr(102)},
 			wantNotes:   "Original note",
@@ -777,20 +768,6 @@ func TestService_PatchEvent(t *testing.T) {
 			wantEnd:     start.Add(2 * time.Hour),
 			wantItem:    102,
 			wantSummary: "Test BudgetItem 2",
-		},
-		{
-			name: "preserves explicit summary while updating time and budget item",
-			patch: EventPatch{
-				Summary:      stringPtr("Custom moved summary"),
-				StartTime:    timePtr(start.Add(15 * time.Minute)),
-				EndTime:      timePtr(start.Add(2 * time.Hour)),
-				BudgetItemId: intPtr(102),
-			},
-			wantNotes:   "Original note",
-			wantSummary: "Custom moved summary",
-			wantStart:   start.Add(15 * time.Minute),
-			wantEnd:     start.Add(2 * time.Hour),
-			wantItem:    102,
 		},
 		{
 			name:    "rejects empty patch",

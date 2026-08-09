@@ -240,8 +240,6 @@ definitions:
         type: string
       start:
         type: string
-      summary:
-        type: string
     type: object
   clickup.BudgetMappingDTO:
     properties:

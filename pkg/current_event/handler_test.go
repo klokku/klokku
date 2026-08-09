@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,7 @@ func TestEventHandler_ModifyCurrentEventNotes(t *testing.T) {
 		{name: "clears notes", body: `{"notes":""}`, seedEvent: true, wantStatus: http.StatusOK, wantResponse: stringPointer("")},
 		{name: "rejects missing notes field", body: `{}`, seedEvent: true, wantStatus: http.StatusBadRequest},
 		{name: "rejects malformed body", body: `{`, seedEvent: true, wantStatus: http.StatusBadRequest},
+		{name: "rejects notes over maximum length", body: `{"notes":"` + strings.Repeat("a", calendar.MaxNotesLength+1) + `"}`, seedEvent: true, wantStatus: http.StatusBadRequest},
 		{name: "returns not found without current event", body: `{"notes":"Updated note"}`, wantStatus: http.StatusNotFound},
 	}
 

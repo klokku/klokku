@@ -125,7 +125,6 @@ type CalendarEventDTO struct {
 }
 
 type CalendarEventPatchDTO struct {
-	Summary      *string `json:"summary,omitempty"`
 	Start        *string `json:"start,omitempty"`
 	End          *string `json:"end,omitempty"`
 	Notes        *string `json:"notes,omitempty"`

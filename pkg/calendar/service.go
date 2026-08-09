@@ -207,10 +207,6 @@ func (s *Service) GetEvents(ctx context.Context, from time.Time, to time.Time) (
 }
 
 func (s *Service) ModifyEvent(ctx context.Context, event Event) ([]Event, error) {
-	return s.modifyEvent(ctx, event, false)
-}
-
-func (s *Service) modifyEvent(ctx context.Context, event Event, preserveSummary bool) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -232,13 +228,11 @@ func (s *Service) modifyEvent(ctx context.Context, event Event, preserveSummary 
 		eventToUpdate := events[0]
 		eventsToAdd := events[1:]
 
-		if !preserveSummary {
-			planItemName, err := s.getEventName(ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
-			if err != nil {
-				return err
-			}
-			eventToUpdate.Summary = planItemName
+		planItemName, err := s.getEventName(ctx, eventToUpdate.StartTime, eventToUpdate.Metadata.BudgetItemId)
+		if err != nil {
+			return err
 		}
+		eventToUpdate.Summary = planItemName
 
 		updatedEvent, err := repo.UpdateEvent(ctx, userId, eventToUpdate)
 		if err != nil {
@@ -247,13 +241,11 @@ func (s *Service) modifyEvent(ctx context.Context, event Event, preserveSummary 
 		}
 		updatedEvents = append(updatedEvents, updatedEvent)
 		for _, e := range eventsToAdd {
-			if !preserveSummary {
-				planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
-				if err != nil {
-					return err
-				}
-				e.Summary = planItemName
+			planItemName, err := s.getEventName(ctx, e.StartTime, e.Metadata.BudgetItemId)
+			if err != nil {
+				return err
 			}
+			e.Summary = planItemName
 			newEvent, err := repo.StoreEvent(ctx, userId, e)
 			if err != nil {
 				log.Errorf("failed to store event: %v", err)
@@ -271,7 +263,7 @@ func (s *Service) modifyEvent(ctx context.Context, event Event, preserveSummary 
 }
 
 func (s *Service) PatchEvent(ctx context.Context, eventUid string, patch EventPatch) ([]Event, error) {
-	if patch.Summary == nil && patch.StartTime == nil && patch.EndTime == nil && patch.Notes == nil && patch.BudgetItemId == nil {
+	if patch.StartTime == nil && patch.EndTime == nil && patch.Notes == nil && patch.BudgetItemId == nil {
 		return nil, ErrEmptyEventPatch
 	}
 
@@ -286,9 +278,6 @@ func (s *Service) PatchEvent(ctx context.Context, eventUid string, patch EventPa
 	}
 
 	timeChanged := false
-	if patch.Summary != nil {
-		event.Summary = *patch.Summary
-	}
 	if patch.StartTime != nil {
 		timeChanged = !event.StartTime.Equal(*patch.StartTime)
 		event.StartTime = *patch.StartTime
@@ -308,7 +297,7 @@ func (s *Service) PatchEvent(ctx context.Context, eventUid string, patch EventPa
 	}
 
 	if timeChanged {
-		return s.modifyStickyEvent(ctx, event, patch.Summary != nil)
+		return s.ModifyStickyEvent(ctx, event)
 	}
 	if patch.BudgetItemId == nil {
 		updatedEvent, err := s.repo.UpdateEvent(ctx, userId, event)
@@ -317,7 +306,7 @@ func (s *Service) PatchEvent(ctx context.Context, eventUid string, patch EventPa
 		}
 		return []Event{updatedEvent}, nil
 	}
-	return s.modifyEvent(ctx, event, patch.Summary != nil)
+	return s.ModifyEvent(ctx, event)
 }
 
 func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetItemId int) (string, error) {
@@ -340,10 +329,6 @@ func (s *Service) getEventName(ctx context.Context, startTime time.Time, budgetI
 }
 
 func (s *Service) ModifyStickyEvent(ctx context.Context, event Event) ([]Event, error) {
-	return s.modifyStickyEvent(ctx, event, false)
-}
-
-func (s *Service) modifyStickyEvent(ctx context.Context, event Event, preserveSummary bool) ([]Event, error) {
 	err := validateEvent(event)
 	if err != nil {
 		return nil, err
@@ -375,7 +360,7 @@ func (s *Service) modifyStickyEvent(ctx context.Context, event Event, preserveSu
 			}
 		}
 
-		modifiedEvents, err = s.modifyEvent(ctx, event, preserveSummary)
+		modifiedEvents, err = s.ModifyEvent(ctx, event)
 		if err != nil {
 			return fmt.Errorf("failed to modify event: %w", err)
 		}
@@ -449,6 +434,9 @@ func (s *Service) DeleteEvent(ctx context.Context, eventUid string) error {
 }
 
 func validateEvent(event Event) error {
+	if err := ValidateNotes(event.Notes); err != nil {
+		return err
+	}
 	if event.StartTime.IsZero() {
 		return fmt.Errorf("start time cannot be zero")
 	}

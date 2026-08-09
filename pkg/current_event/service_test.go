@@ -2,6 +2,7 @@ package current_event
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +51,19 @@ func setupServiceTest(t *testing.T) (Service, context.Context, func()) {
 }
 
 func TestStartNewEvent(t *testing.T) {
+	t.Run("rejects notes over maximum length", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+		event := CurrentEvent{
+			StartTime: clock.Now(),
+			Notes:     strings.Repeat("a", calendar.MaxNotesLength+1),
+			PlanItem:  PlanItem{BudgetItemId: 10, Name: "Test", WeeklyDuration: time.Hour},
+		}
+
+		_, err := service.StartNewEvent(ctx, event)
+
+		assert.ErrorIs(t, err, calendar.ErrNotesTooLong)
+	})
 
 	t.Run("No existing event, successfully starts new event", func(t *testing.T) {
 		service, ctx, teardown := setupServiceTest(t)
