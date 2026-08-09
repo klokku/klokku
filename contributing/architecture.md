@@ -18,6 +18,8 @@ Klokku follows a clean architecture pattern with clear separation of concerns be
 1. **Domain Layer**: Contains the core business entities and logic
     - Domain models (e.g., `BudgetPlan`, `Event`, `User`)
     - Business rules and validations
+    - Domain types may implement self-contained invariants and value-object behavior, such as validating their supported values
+    - Workflow orchestration, persistence, I/O, and external integrations belong in the service, repository, or API layers instead
 
 2. **Repository Layer**: Handles data access and persistence
     - Database operations via `pgx/v5` connection pool

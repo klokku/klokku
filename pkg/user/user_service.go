@@ -52,6 +52,7 @@ func (u *UserServiceImpl) GetCurrentUser(ctx context.Context) (User, error) {
 }
 
 func (u *UserServiceImpl) CreateUser(ctx context.Context, user User) (User, error) {
+	user.Settings.EventCalendarType = defaultEventCalendarType(user.Settings.EventCalendarType)
 	userValid := u.validateUser(ctx, user)
 	if !userValid {
 		return User{}, ErrUserDataInvalid
@@ -66,6 +67,10 @@ func (u *UserServiceImpl) CreateUser(ctx context.Context, user User) (User, erro
 
 func (u *UserServiceImpl) validateUser(ctx context.Context, user User) bool {
 	if user.DisplayName == "" || user.Username == "" || user.Uid == "" {
+		return false
+	}
+	if !user.Settings.EventCalendarType.IsValid() {
+		log.Errorf("invalid event calendar type: %q", user.Settings.EventCalendarType)
 		return false
 	}
 	available, err := u.IsUsernameAvailable(ctx, user.Username)
@@ -103,7 +108,21 @@ func (u *UserServiceImpl) UpdateUser(ctx context.Context, user User) (User, erro
 	if err != nil {
 		return User{}, fmt.Errorf("failed to get current user: %w", err)
 	}
+	user.Settings.EventCalendarType = defaultEventCalendarType(user.Settings.EventCalendarType)
+	if !user.Settings.EventCalendarType.IsValid() {
+		log.Errorf("invalid event calendar type: %q", user.Settings.EventCalendarType)
+		return User{}, ErrUserDataInvalid
+	}
 	return u.repo.UpdateUser(ctx, userId, user)
+}
+
+// defaultEventCalendarType falls back to the Klokku calendar when no calendar
+// type is provided, so that a client omitting the field never blanks the value.
+func defaultEventCalendarType(calendarType EventCalendarType) EventCalendarType {
+	if calendarType == "" {
+		return KlokkuCalendar
+	}
+	return calendarType
 }
 
 func (u *UserServiceImpl) DeleteUser(ctx context.Context, id int) error {

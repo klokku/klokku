@@ -18,6 +18,15 @@ const (
 	GoogleCalendar EventCalendarType = "google"
 )
 
+// IsValid reports whether the calendar type is one of the supported values.
+func (t EventCalendarType) IsValid() bool {
+	switch t {
+	case KlokkuCalendar, GoogleCalendar:
+		return true
+	}
+	return false
+}
+
 type Settings struct {
 	Timezone          string
 	WeekFirstDay      time.Weekday
