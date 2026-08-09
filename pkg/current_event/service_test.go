@@ -147,6 +147,44 @@ func TestStartNewEvent(t *testing.T) {
 		assert.Equal(t, existingEvent.PlanItem.BudgetItemId, calendarEvents[0].Metadata.BudgetItemId)
 	})
 
+	t.Run("should carry over notes to calendar event when replacing current event", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		existingEvent := CurrentEvent{
+			StartTime: clock.Now().Add(-60 * time.Minute),
+			Notes:     "Note on the running event",
+			PlanItem: PlanItem{
+				BudgetItemId:   123,
+				Name:           "Event with notes",
+				WeeklyDuration: time.Duration(30) * time.Minute,
+			},
+		}
+
+		newEvent := CurrentEvent{
+			StartTime: clock.Now(),
+			PlanItem: PlanItem{
+				BudgetItemId:   345,
+				Name:           "Next event",
+				WeeklyDuration: time.Duration(120) * time.Minute,
+			},
+		}
+
+		// when
+		clock.SetNow(existingEvent.StartTime)
+		service.StartNewEvent(ctx, existingEvent)
+		clock.SetNow(newEvent.StartTime)
+		_, err := service.StartNewEvent(ctx, newEvent)
+		require.NoError(t, err)
+
+		// then
+		calendarEvents, err := calendarStub.GetLastEvents(ctx, 1)
+		require.NoError(t, err)
+		require.Len(t, calendarEvents, 1)
+		assert.Equal(t, "Note on the running event", calendarEvents[0].Notes)
+	})
+
 	t.Run("should not store short event when IgnoreShortEvents is true and use previous event start time", func(t *testing.T) {
 		service, ctx, teardown := setupServiceTest(t)
 		defer teardown()
@@ -563,5 +601,98 @@ func TestModifyCurrentEventStartTime(t *testing.T) {
 		assert.Equal(t, currentDayEvent1.PlanItem.Name, currentDayCalEvent1.Summary)
 		assert.Equal(t, currentDayEvent1.StartTime, currentDayCalEvent1.StartTime)
 		assert.Equal(t, currentDayEvent1.StartTime.Add(time.Duration(7-1)*time.Hour), currentDayCalEvent1.EndTime)
+	})
+}
+
+func TestModifyCurrentEventNotes(t *testing.T) {
+
+	t.Run("should set notes on the current event", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		existingEvent := CurrentEvent{
+			StartTime: clock.Now().Add(-30 * time.Minute),
+			PlanItem: PlanItem{
+				BudgetItemId:   123,
+				Name:           "Event",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, existingEvent)
+
+		// when
+		modified, err := service.ModifyCurrentEventNotes(ctx, "Remember the milk")
+
+		// then
+		require.NoError(t, err)
+		assert.Equal(t, "Remember the milk", modified.Notes)
+		currentEvent, err := service.FindCurrentEvent(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "Remember the milk", currentEvent.Notes)
+	})
+
+	t.Run("should clear notes on the current event", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		existingEvent := CurrentEvent{
+			StartTime: clock.Now().Add(-30 * time.Minute),
+			Notes:     "Note to clear",
+			PlanItem: PlanItem{
+				BudgetItemId:   123,
+				Name:           "Event",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, existingEvent)
+
+		// when
+		modified, err := service.ModifyCurrentEventNotes(ctx, "")
+
+		// then
+		require.NoError(t, err)
+		assert.Empty(t, modified.Notes)
+		currentEvent, err := service.FindCurrentEvent(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, currentEvent.Notes)
+	})
+
+	t.Run("should return ErrNoCurrentEvent when no event is running", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// when
+		_, err := service.ModifyCurrentEventNotes(ctx, "Note")
+
+		// then
+		assert.ErrorIs(t, err, ErrNoCurrentEvent)
+	})
+
+	t.Run("should preserve notes when modifying start time", func(t *testing.T) {
+		service, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		existingEvent := CurrentEvent{
+			StartTime: clock.Now().Add(-90 * time.Minute),
+			Notes:     "Note to preserve",
+			PlanItem: PlanItem{
+				BudgetItemId:   123,
+				Name:           "Event",
+				WeeklyDuration: time.Duration(30) * time.Hour,
+			},
+		}
+		service.StartNewEvent(ctx, existingEvent)
+
+		// when
+		_, err := service.ModifyCurrentEventStartTime(ctx, clock.Now().Add(-60*time.Minute))
+
+		// then
+		require.NoError(t, err)
+		currentEvent, err := service.FindCurrentEvent(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "Note to preserve", currentEvent.Notes)
 	})
 }

@@ -89,6 +89,7 @@ type SetOffWeekRequest struct {
 type CurrentEventDTO struct {
 	PlanItem  PlanItemDTO `json:"planItem"`
 	StartTime string      `json:"startTime"`
+	Notes     string      `json:"notes"`
 }
 
 type PlanItemDTO struct {
@@ -101,10 +102,15 @@ type StartEventRequest struct {
 	BudgetItemID   int    `json:"budgetItemId"`
 	Name           string `json:"name"`
 	WeeklyDuration int    `json:"weeklyDuration"`
+	Notes          string `json:"notes"`
 }
 
 type AdjustStartRequest struct {
 	StartTime string `json:"startTime"`
+}
+
+type UpdateNotesRequest struct {
+	Notes string `json:"notes"`
 }
 
 // --- Calendar Event ---
@@ -114,7 +120,16 @@ type CalendarEventDTO struct {
 	Summary      string `json:"summary"`
 	Start        string `json:"start"`
 	End          string `json:"end"`
+	Notes        string `json:"notes"`
 	BudgetItemID int    `json:"budgetItemId"`
+}
+
+type CalendarEventPatchDTO struct {
+	Summary      *string `json:"summary,omitempty"`
+	Start        *string `json:"start,omitempty"`
+	End          *string `json:"end,omitempty"`
+	Notes        *string `json:"notes,omitempty"`
+	BudgetItemID *int    `json:"budgetItemId,omitempty"`
 }
 
 // --- Stats ---

@@ -20,8 +20,8 @@ This document outlines the coding conventions and best practices for Go developm
 - **Separation of Concerns**: Use the following package hierarchy:
   - `internal/`: Code that's not meant for external import (app wiring, config, database, CLI, test utils)
   - `pkg/`: Code that can be imported by other projects; each package follows the four-file layering (model, repository, service, handler) described in `contributing/architecture.md`
-  - `migrations/`: Database migration scripts (golang-migrate, numbered `NNNN_description.up.sql` / `.down.sql`)
-  - `db/init.sql`: Full schema for fresh installs; must stay in sync with `/migrations/`
+  - `migrations/`: Forward-only database migration scripts (golang-migrate, numbered `NNNN_description.up.sql`)
+  - `db/init.sql`: PostgreSQL database/schema bootstrap; table schemas are created by migrations
 - **Package Naming**: Use singular nouns for package names (e.g., `user` not `users`).
 - **Avoid Circular Dependencies**: Ensure packages form a directed acyclic graph.
 
@@ -94,6 +94,16 @@ This document outlines the coding conventions and best practices for Go developm
 - **SQL Injection Prevention**: Use parameterized queries to prevent SQL injection.
 - **NULL Handling**: Use `sql.Null*` types (or pgx nullable types) for columns that can be NULL.
 - **No Rows**: Detect missing rows with `errors.Is(err, pgx.ErrNoRows)`.
+
+## Database Migrations
+
+- **Forward-Only**: Add migrations as `NNNN_description.up.sql`; production schema changes are not rolled back with down migrations.
+- **Version Compatibility**: Every migration must work with both the currently deployed application version and the next version so mixed-version deployments remain safe.
+- **Expand**: Introduce additive schema such as nullable columns, columns with safe defaults, new tables, or parallel indexes and constraints.
+- **Migrate**: Deploy code that can read and write both old and new representations, then backfill existing data as needed.
+- **Contract**: Remove obsolete schema only in a later release, after all application versions that depend on it have been retired.
+- **Unsafe Changes**: Never rename or drop a column, remove a table, or tighten a constraint in the same release that stops using the old schema.
+- **Fresh Installs**: `db/init.sql` bootstraps PostgreSQL; the full table schema is produced by applying every migration in order.
 
 ## Common Pitfalls
 

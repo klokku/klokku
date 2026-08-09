@@ -1,0 +1,2 @@
+ALTER TABLE calendar_event ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE current_event ADD COLUMN notes TEXT NOT NULL DEFAULT '';

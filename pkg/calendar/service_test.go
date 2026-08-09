@@ -599,6 +599,265 @@ func TestService_ModifyStickyEvent_MultiDay(t *testing.T) {
 	assert.Equal(t, start.Add(4*time.Hour), modifiedEvents[1].EndTime)
 }
 
+func TestService_EventNotes(t *testing.T) {
+	t.Run("notes are copied to all parts when event crosses date boundary", func(t *testing.T) {
+		s, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		start := time.Date(2026, 1, 1, 22, 0, 0, 0, location)
+		event := Event{
+			Summary:   "Multi-day event",
+			StartTime: start,
+			EndTime:   start.Add(4 * time.Hour), // 02:00 the next day
+			Notes:     "Note spanning midnight",
+			Metadata:  EventMetadata{BudgetItemId: 101},
+		}
+
+		// when
+		addedEvents, err := s.AddEvent(ctx, event)
+
+		// then
+		require.NoError(t, err)
+		require.Len(t, addedEvents, 2)
+		assert.Equal(t, "Note spanning midnight", addedEvents[0].Notes)
+		assert.Equal(t, "Note spanning midnight", addedEvents[1].Notes)
+	})
+
+	t.Run("notes are preserved when event is shortened by sticky event", func(t *testing.T) {
+		s, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		start := time.Date(2026, 1, 1, 10, 0, 0, 0, location)
+		existing := Event{
+			Summary:   "Existing event",
+			StartTime: start,
+			EndTime:   start.Add(2 * time.Hour),
+			Notes:     "Existing note",
+			Metadata:  EventMetadata{BudgetItemId: 101},
+		}
+		_, err := s.AddEvent(ctx, existing)
+		require.NoError(t, err)
+
+		// when - add a sticky event overlapping the second hour of the existing event
+		sticky := Event{
+			Summary:   "Sticky event",
+			StartTime: start.Add(time.Hour),
+			EndTime:   start.Add(3 * time.Hour),
+			Notes:     "Sticky note",
+			Metadata:  EventMetadata{BudgetItemId: 102},
+		}
+		_, err = s.AddStickyEvent(ctx, sticky)
+		require.NoError(t, err)
+
+		// then
+		events, err := s.GetEvents(ctx, start, start.Add(3*time.Hour))
+		require.NoError(t, err)
+		require.Len(t, events, 2)
+		assert.Equal(t, "Existing note", events[0].Notes)
+		assert.Equal(t, start, events[0].StartTime)
+		assert.Equal(t, start.Add(time.Hour), events[0].EndTime)
+		assert.Equal(t, "Sticky note", events[1].Notes)
+	})
+
+	t.Run("notes are copied to the remainder when sticky event splits existing event", func(t *testing.T) {
+		s, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		start := time.Date(2026, 1, 1, 10, 0, 0, 0, location)
+		existing := Event{
+			Summary:   "Existing event",
+			StartTime: start,
+			EndTime:   start.Add(3 * time.Hour),
+			Notes:     "Existing note",
+			Metadata:  EventMetadata{BudgetItemId: 101},
+		}
+		_, err := s.AddEvent(ctx, existing)
+		require.NoError(t, err)
+
+		// when - add a sticky event in the middle of the existing event
+		sticky := Event{
+			Summary:   "Sticky event",
+			StartTime: start.Add(time.Hour),
+			EndTime:   start.Add(2 * time.Hour),
+			Metadata:  EventMetadata{BudgetItemId: 102},
+		}
+		_, err = s.AddStickyEvent(ctx, sticky)
+		require.NoError(t, err)
+
+		// then - the existing event is split in two, both parts keep the note
+		events, err := s.GetEvents(ctx, start, start.Add(3*time.Hour))
+		require.NoError(t, err)
+		require.Len(t, events, 3)
+		assert.Equal(t, "Existing note", events[0].Notes)
+		assert.Equal(t, "Existing note", events[2].Notes)
+	})
+
+	t.Run("notes can be modified and cleared via ModifyEvent", func(t *testing.T) {
+		s, ctx, teardown := setupServiceTest(t)
+		defer teardown()
+
+		// given
+		start := time.Date(2026, 1, 1, 10, 0, 0, 0, location)
+		event := Event{
+			Summary:   "Event",
+			StartTime: start,
+			EndTime:   start.Add(time.Hour),
+			Metadata:  EventMetadata{BudgetItemId: 101},
+		}
+		addedEvents, err := s.AddEvent(ctx, event)
+		require.NoError(t, err)
+		require.Empty(t, addedEvents[0].Notes)
+
+		// when - set a note
+		toModify := addedEvents[0]
+		toModify.Notes = "Added later"
+		modifiedEvents, err := s.ModifyEvent(ctx, toModify)
+		require.NoError(t, err)
+		assert.Equal(t, "Added later", modifiedEvents[0].Notes)
+
+		// when - clear the note
+		modifiedEvents[0].Notes = ""
+		clearedEvents, err := s.ModifyEvent(ctx, modifiedEvents[0])
+		require.NoError(t, err)
+		assert.Empty(t, clearedEvents[0].Notes)
+	})
+}
+
+func TestService_PatchEvent(t *testing.T) {
+	start := time.Date(2026, 1, 1, 10, 0, 0, 0, location)
+	stringPtr := func(value string) *string { return &value }
+	timePtr := func(value time.Time) *time.Time { return &value }
+	intPtr := func(value int) *int { return &value }
+
+	tests := []struct {
+		name        string
+		patch       EventPatch
+		wantNotes   string
+		wantSummary string
+		wantStart   time.Time
+		wantEnd     time.Time
+		wantItem    int
+		wantErr     error
+	}{
+		{
+			name:        "sets notes without changing other fields",
+			patch:       EventPatch{Notes: stringPtr("Patched note")},
+			wantNotes:   "Patched note",
+			wantStart:   start,
+			wantEnd:     start.Add(time.Hour),
+			wantItem:    101,
+			wantSummary: "Test BudgetItem 1",
+		},
+		{
+			name:        "clears notes",
+			patch:       EventPatch{Notes: stringPtr("")},
+			wantNotes:   "",
+			wantStart:   start,
+			wantEnd:     start.Add(time.Hour),
+			wantItem:    101,
+			wantSummary: "Test BudgetItem 1",
+		},
+		{
+			name:        "updates summary",
+			patch:       EventPatch{Summary: stringPtr("Custom summary")},
+			wantNotes:   "Original note",
+			wantSummary: "Custom summary",
+			wantStart:   start,
+			wantEnd:     start.Add(time.Hour),
+			wantItem:    101,
+		},
+		{
+			name:        "updates time and budget item",
+			patch:       EventPatch{StartTime: timePtr(start.Add(15 * time.Minute)), EndTime: timePtr(start.Add(2 * time.Hour)), BudgetItemId: intPtr(102)},
+			wantNotes:   "Original note",
+			wantStart:   start.Add(15 * time.Minute),
+			wantEnd:     start.Add(2 * time.Hour),
+			wantItem:    102,
+			wantSummary: "Test BudgetItem 2",
+		},
+		{
+			name: "preserves explicit summary while updating time and budget item",
+			patch: EventPatch{
+				Summary:      stringPtr("Custom moved summary"),
+				StartTime:    timePtr(start.Add(15 * time.Minute)),
+				EndTime:      timePtr(start.Add(2 * time.Hour)),
+				BudgetItemId: intPtr(102),
+			},
+			wantNotes:   "Original note",
+			wantSummary: "Custom moved summary",
+			wantStart:   start.Add(15 * time.Minute),
+			wantEnd:     start.Add(2 * time.Hour),
+			wantItem:    102,
+		},
+		{
+			name:    "rejects empty patch",
+			patch:   EventPatch{},
+			wantErr: ErrEmptyEventPatch,
+		},
+		{
+			name:    "validates merged event",
+			patch:   EventPatch{EndTime: timePtr(start.Add(-time.Minute))},
+			wantErr: errors.New("end time must be after start time"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, ctx, teardown := setupServiceTest(t)
+			defer teardown()
+
+			created, err := s.AddEvent(ctx, Event{
+				Summary:   "Original",
+				StartTime: start,
+				EndTime:   start.Add(time.Hour),
+				Notes:     "Original note",
+				Metadata:  EventMetadata{BudgetItemId: 101},
+			})
+			require.NoError(t, err)
+
+			patched, err := s.PatchEvent(ctx, created[0].UID, test.patch)
+			if test.wantErr != nil {
+				assert.ErrorContains(t, err, test.wantErr.Error())
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, patched, 1)
+			assert.Equal(t, test.wantNotes, patched[0].Notes)
+			assert.Equal(t, test.wantSummary, patched[0].Summary)
+			assert.Equal(t, test.wantStart, patched[0].StartTime)
+			assert.Equal(t, test.wantEnd, patched[0].EndTime)
+			assert.Equal(t, test.wantItem, patched[0].Metadata.BudgetItemId)
+		})
+	}
+}
+
+func TestService_PatchEventNotesWithoutHistoricalPlanItem(t *testing.T) {
+	repo := NewRepositoryStub()
+	service := NewService(repo, eventBus, func(ctx context.Context, date time.Time) ([]weekly_plan.WeeklyPlanItem, error) {
+		return nil, nil
+	})
+	ctx := user.WithUser(context.Background(), user.User{Id: 1, Settings: user.Settings{Timezone: "UTC"}})
+	start := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	stored, err := repo.StoreEvent(ctx, 1, Event{
+		Summary:   "Historical item",
+		StartTime: start,
+		EndTime:   start.Add(time.Hour),
+		Metadata:  EventMetadata{BudgetItemId: 999},
+	})
+	require.NoError(t, err)
+	notes := "Historical context"
+
+	patched, err := service.PatchEvent(ctx, stored.UID, EventPatch{Notes: &notes})
+
+	require.NoError(t, err)
+	require.Len(t, patched, 1)
+	assert.Equal(t, "Historical item", patched[0].Summary)
+	assert.Equal(t, notes, patched[0].Notes)
+}
+
 func TestService_AddEvent(t *testing.T) {
 	t.Run("publishes event to event bus", func(t *testing.T) {
 		s, ctx, teardown := setupServiceTest(t)

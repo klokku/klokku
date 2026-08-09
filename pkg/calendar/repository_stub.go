@@ -79,6 +79,18 @@ func (r *RepositoryStub) StoreEvent(ctx context.Context, userId int, event Event
 	return event, nil
 }
 
+func (r *RepositoryStub) FindEvent(ctx context.Context, userId int, eventUid string) (Event, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	event, exists := r.items[eventUid]
+	if !exists || r.userIds[eventUid] != userId {
+		return Event{}, ErrEventNotFound
+	}
+
+	return event, nil
+}
+
 func (r *RepositoryStub) GetEvents(ctx context.Context, userId int, from, to time.Time) ([]Event, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

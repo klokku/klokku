@@ -13,6 +13,11 @@ import (
 type CurrentEventDTO struct {
 	PlanItem  PlanItemDTO `json:"planItem"`
 	StartTime string      `json:"startTime"`
+	Notes     string      `json:"notes"`
+}
+
+type CurrentEventNotesPatchDTO struct {
+	Notes *string `json:"notes"`
 }
 
 type PlanItemDTO struct {
@@ -39,7 +44,7 @@ func NewEventHandler(eventService Service) *EventHandler {
 // @Tags CurrentEvent
 // @Accept json
 // @Produce json
-// @Param event body object{budgetItemId=int,name=string,weeklyDuration=int} true "Event start details"
+// @Param event body object{budgetItemId=int,name=string,weeklyDuration=int,notes=string} true "Event start details"
 // @Success 201 {object} CurrentEventDTO
 // @Failure 403 {string} string "User not found"
 // @Router /api/event [post]
@@ -52,6 +57,7 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 		BudgetItemId   int    `json:"budgetItemId"`
 		Name           string `json:"name"`
 		WeeklyDuration int    `json:"weeklyDuration"`
+		Notes          string `json:"notes"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&startEventRequest); err != nil {
@@ -72,6 +78,7 @@ func (e *EventHandler) StartEvent(w http.ResponseWriter, r *http.Request) {
 
 	event := &CurrentEvent{
 		StartTime: startTime,
+		Notes:     startEventRequest.Notes,
 		PlanItem: PlanItem{
 			BudgetItemId:   startEventRequest.BudgetItemId,
 			Name:           startEventRequest.Name,
@@ -182,10 +189,62 @@ func (e *EventHandler) ModifyCurrentEventStartTime(w http.ResponseWriter, r *htt
 	}
 }
 
+// ModifyCurrentEventNotes godoc
+// @Summary Modify current event notes
+// @Description Set or clear notes on the currently running event. Notes are optional and do not affect time tracking.
+// @Tags CurrentEvent
+// @Accept json
+// @Produce json
+// @Param notes body CurrentEventNotesPatchDTO true "Notes text (empty string clears the note)"
+// @Success 200 {object} CurrentEventDTO
+// @Failure 400 {object} rest.ErrorResponse "Invalid request"
+// @Failure 403 {string} string "User not found"
+// @Failure 404 {string} string "No current event"
+// @Router /api/event/current/notes [patch]
+// @Security XUserId
+func (e *EventHandler) ModifyCurrentEventNotes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	log.Trace("Modifying current event notes")
+	var modifyNotesRequest CurrentEventNotesPatchDTO
+	if err := json.NewDecoder(r.Body).Decode(&modifyNotesRequest); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		encodeErr := json.NewEncoder(w).Encode(rest.ErrorResponse{
+			Error: "Invalid request body format",
+		})
+		if encodeErr != nil {
+			http.Error(w, encodeErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		return
+	}
+	if modifyNotesRequest.Notes == nil {
+		w.WriteHeader(http.StatusBadRequest)
+		if err := json.NewEncoder(w).Encode(rest.ErrorResponse{Error: "notes field is required"}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	modifiedEvent, err := e.eventService.ModifyCurrentEventNotes(r.Context(), *modifyNotesRequest.Notes)
+	if err != nil {
+		if errors.Is(err, ErrNoCurrentEvent) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(eventToDTO(modifiedEvent)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 func eventToDTO(event CurrentEvent) CurrentEventDTO {
 	return CurrentEventDTO{
 		PlanItem:  planItemToDTO(event.PlanItem),
 		StartTime: event.StartTime.Format(time.RFC3339),
+		Notes:     event.Notes,
 	}
 }
 
