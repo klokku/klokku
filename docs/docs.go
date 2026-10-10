@@ -2856,6 +2856,10 @@ const docTemplate = `{
                 "excludedWeekCount": {
                     "type": "integer"
                 },
+                "firstTrackedAt": {
+                    "description": "Earliest tracked event for the plan's current items, independent of the requested period.",
+                    "type": "string"
+                },
                 "planId": {
                     "type": "integer"
                 },

@@ -33,6 +33,7 @@ type WeeklyReportEntry struct {
 type Report struct {
 	PlanId              int
 	PlanName            string
+	FirstTrackedAt      *time.Time // earliest event for this plan's current items, independent of the report period
 	StartDate           time.Time
 	EndDate             time.Time
 	WeekCount           int
