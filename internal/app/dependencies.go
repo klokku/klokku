@@ -11,6 +11,7 @@ import (
 	"github.com/klokku/klokku/pkg/calendar_provider"
 	"github.com/klokku/klokku/pkg/clickup"
 	"github.com/klokku/klokku/pkg/current_event"
+	"github.com/klokku/klokku/pkg/dashboard"
 	"github.com/klokku/klokku/pkg/stats"
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/klokku/klokku/pkg/webhook"
@@ -19,8 +20,9 @@ import (
 
 // Dependencies holds all services and handlers for the application.
 type Dependencies struct {
-	UserService user.Service
-	UserHandler *user.Handler
+	UserService      user.Service
+	UserHandler      *user.Handler
+	DashboardHandler *dashboard.Handler
 
 	EventBus *event_bus.EventBus
 
@@ -69,6 +71,7 @@ func BuildDependencies(db *pgxpool.Pool, cfg config.Application) *Dependencies {
 
 	deps.UserService = user.NewUserService(user.NewUserRepo(db))
 	deps.UserHandler = user.NewHandler(deps.UserService)
+	deps.DashboardHandler = dashboard.NewHandler(dashboard.NewService(dashboard.NewRepository(db)))
 
 	deps.BudgetRepo = budget_plan.NewBudgetPlanRepo(db)
 	deps.BudgetPlanService = budget_plan.NewBudgetPlanService(deps.BudgetRepo, deps.EventBus)

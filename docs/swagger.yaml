@@ -329,6 +329,20 @@ definitions:
       weeklyDuration:
         type: integer
     type: object
+  dashboard.Card:
+    properties:
+      id:
+        type: string
+      visible:
+        type: boolean
+    type: object
+  dashboard.Configuration:
+    properties:
+      cards:
+        items:
+          $ref: '#/definitions/dashboard.Card'
+        type: array
+    type: object
   rest.ErrorResponse:
     properties:
       details:
@@ -1802,6 +1816,79 @@ paths:
       summary: Update current user
       tags:
       - User
+  /api/user/current/dashboard:
+    delete:
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: User not found
+          schema:
+            type: string
+        "500":
+          description: Failed to reset configuration
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Restore application dashboard defaults
+      tags:
+      - Dashboard
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dashboard.Configuration'
+        "404":
+          description: User not found
+          schema:
+            type: string
+        "500":
+          description: Failed to read configuration
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Get dashboard configuration (null means application defaults)
+      tags:
+      - Dashboard
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Dashboard configuration
+        in: body
+        name: configuration
+        required: true
+        schema:
+          $ref: '#/definitions/dashboard.Configuration'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dashboard.Configuration'
+        "400":
+          description: Invalid configuration
+          schema:
+            type: string
+        "404":
+          description: User not found
+          schema:
+            type: string
+        "500":
+          description: Failed to save configuration
+          schema:
+            type: string
+      security:
+      - XUserId: []
+      summary: Save ordered dashboard card visibility
+      tags:
+      - Dashboard
   /api/user/current/photo:
     delete:
       description: Remove the current user's profile photo
