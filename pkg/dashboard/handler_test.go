@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,19 +9,6 @@ import (
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/stretchr/testify/require"
 )
-
-type memoryRepository struct {
-	configurations map[int]*Configuration
-}
-
-func (r *memoryRepository) Find(ctx context.Context, userId int) (*Configuration, error) {
-	return r.configurations[userId], nil
-}
-
-func (r *memoryRepository) Store(ctx context.Context, userId int, configuration *Configuration) error {
-	r.configurations[userId] = configuration
-	return nil
-}
 
 func request(handler http.HandlerFunc, method, body string, userId int) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, "/api/user/current/dashboard", strings.NewReader(body))
@@ -33,7 +19,7 @@ func request(handler http.HandlerFunc, method, body string, userId int) *httptes
 }
 
 func TestHandler_ConfigurationRoundTrip(t *testing.T) {
-	handler := NewHandler(NewService(&memoryRepository{configurations: make(map[int]*Configuration)}))
+	handler := NewHandler(NewService(newRepositoryStub()))
 	require.JSONEq(t, `null`, request(handler.GetConfiguration, http.MethodGet, "", 1).Body.String())
 	body := `{"cards":[{"id":"time-today","visible":false},{"id":"future-card","visible":true}]}`
 	response := request(handler.SaveConfiguration, http.MethodPut, body, 1)
@@ -47,20 +33,20 @@ func TestHandler_ConfigurationRoundTrip(t *testing.T) {
 
 func TestHandler_InvalidConfigurationDoesNotReplacePreferences(t *testing.T) {
 	tests := []struct{ name, body string }{
-		{"duplicate cards", `{"cards":[{"id":"time-today","visible":true},{"id":"time-today","visible":false}]}`},
-		{"missing visibility", `{"cards":[{"id":"time-today"}]}`},
-		{"null visibility", `{"cards":[{"id":"time-today","visible":null}]}`},
-		{"missing cards", `{}`},
-		{"null cards", `{"cards":null}`},
-		{"null configuration", `null`},
-		{"empty id", `{"cards":[{"id":"","visible":true}]}`},
-		{"tracking card", `{"cards":[{"id":"tracking-now","visible":false}]}`},
-		{"trailing JSON", `{"cards":[]} {}`},
-		{"invalid id", `{"cards":[{"id":"bad id","visible":true}]}`},
+		{name: "service validation error maps to bad request", body: `{"cards":[{"id":"time-today","visible":true},{"id":"time-today","visible":false}]}`},
+		{name: "missing visibility", body: `{"cards":[{"id":"time-today"}]}`},
+		{name: "null visibility", body: `{"cards":[{"id":"time-today","visible":null}]}`},
+		{name: "missing cards", body: `{}`},
+		{name: "null cards", body: `{"cards":null}`},
+		{name: "null configuration", body: `null`},
+		{name: "trailing JSON", body: `{"cards":[]} {}`},
+		{name: "malformed JSON", body: `{"cards":`},
+		{name: "unknown field", body: `{"cards":[],"userId":2}`},
+		{name: "oversized body", body: strings.Repeat(" ", 16*1024) + `{"cards":[]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(NewService(&memoryRepository{configurations: make(map[int]*Configuration)}))
+			handler := NewHandler(NewService(newRepositoryStub()))
 			body := `{"cards":[{"id":"time-today","visible":true}]}`
 			require.Equal(t, http.StatusOK, request(handler.SaveConfiguration, http.MethodPut, body, 1).Code)
 			require.Equal(t, http.StatusBadRequest, request(handler.SaveConfiguration, http.MethodPut, test.body, 1).Code)

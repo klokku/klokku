@@ -4,50 +4,129 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/klokku/klokku/pkg/user"
 	"github.com/stretchr/testify/require"
 )
 
-func TestService_SaveConfigurationCardLimit(t *testing.T) {
-	for _, count := range []int{100, 101} {
-		t.Run(fmt.Sprintf("%d cards", count), func(t *testing.T) {
-			service := NewService(&memoryRepository{configurations: make(map[int]*Configuration)})
+func TestServiceImpl_SaveConfigurationValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		configuration *Configuration
+		wantErr       error
+	}{
+		{name: "nil restores defaults"},
+		{name: "empty card list is valid", configuration: &Configuration{Cards: []Card{}}},
+		{name: "preserves ordered visibility and unknown cards", configuration: &Configuration{Cards: []Card{{Id: "future-card", Visible: false}, {Id: "time-today", Visible: true}}}},
+		{name: "rejects missing cards", configuration: &Configuration{}, wantErr: ErrConfigurationInvalid},
+		{name: "rejects duplicate cards", configuration: &Configuration{Cards: []Card{{Id: "time-today", Visible: true}, {Id: "time-today", Visible: false}}}, wantErr: ErrConfigurationInvalid},
+		{name: "rejects empty card id", configuration: &Configuration{Cards: []Card{{Id: "", Visible: true}}}, wantErr: ErrConfigurationInvalid},
+		{name: "rejects malformed card id", configuration: &Configuration{Cards: []Card{{Id: "bad id", Visible: true}}}, wantErr: ErrConfigurationInvalid},
+		{name: "rejects overly long card id", configuration: &Configuration{Cards: []Card{{Id: strings.Repeat("a", 65), Visible: true}}}, wantErr: ErrConfigurationInvalid},
+		{name: "tracking card cannot be configured", configuration: &Configuration{Cards: []Card{{Id: "tracking-now", Visible: false}}}, wantErr: ErrConfigurationInvalid},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			ctx := user.WithUser(context.Background(), user.User{Id: 1})
-			configuration := &Configuration{Cards: make([]Card, count)}
-			for index := range configuration.Cards {
-				configuration.Cards[index] = Card{Id: fmt.Sprintf("card-%d", index), Visible: true}
-			}
-			err := service.SaveConfiguration(ctx, configuration)
-			if count == 100 {
-				require.NoError(t, err)
-				stored, err := service.FindConfiguration(ctx)
-				require.NoError(t, err)
-				require.Equal(t, configuration, stored)
+			repo := newRepositoryStub()
+			service := NewService(repo)
+			previous := &Configuration{Cards: []Card{{Id: "budget-balance", Visible: true}}}
+			require.NoError(t, service.SaveConfiguration(ctx, previous))
+
+			err := service.SaveConfiguration(ctx, test.configuration)
+
+			require.ErrorIs(t, err, test.wantErr)
+			stored, err := service.FindConfiguration(ctx)
+			require.NoError(t, err)
+			if test.wantErr != nil {
+				require.Equal(t, previous, stored)
 			} else {
-				require.ErrorIs(t, err, ErrConfigurationInvalid)
+				require.Equal(t, test.configuration, stored)
 			}
 		})
 	}
 }
 
-type failingRepository struct{ err error }
+func TestServiceImpl_SaveConfigurationCardLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		count   int
+		wantErr error
+	}{
+		{name: "accepts 100 cards", count: 100},
+		{name: "rejects 101 cards", count: 101, wantErr: ErrConfigurationInvalid},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewService(newRepositoryStub())
+			ctx := user.WithUser(context.Background(), user.User{Id: 1})
+			configuration := &Configuration{Cards: make([]Card, test.count)}
+			for index := range configuration.Cards {
+				configuration.Cards[index] = Card{Id: fmt.Sprintf("card-%d", index), Visible: true}
+			}
 
-func (r failingRepository) Find(context.Context, int) (*Configuration, error) { return nil, r.err }
-func (r failingRepository) Store(context.Context, int, *Configuration) error  { return r.err }
+			err := service.SaveConfiguration(ctx, configuration)
 
-func TestService_RequiresCurrentUserAndPropagatesRepositoryErrors(t *testing.T) {
+			require.ErrorIs(t, err, test.wantErr)
+			if test.wantErr == nil {
+				stored, err := service.FindConfiguration(ctx)
+				require.NoError(t, err)
+				require.Equal(t, configuration, stored)
+			}
+		})
+	}
+}
+
+func TestServiceImpl_FindConfigurationErrors(t *testing.T) {
 	repoError := errors.New("database unavailable")
-	service := NewService(failingRepository{err: repoError})
-	_, err := service.FindConfiguration(context.Background())
-	require.Error(t, err)
-	require.NotErrorIs(t, err, repoError)
-	err = service.SaveConfiguration(context.Background(), nil)
-	require.Error(t, err)
-	require.NotErrorIs(t, err, repoError)
-	ctx := user.WithUser(context.Background(), user.User{Id: 1})
-	_, err = service.FindConfiguration(ctx)
-	require.ErrorIs(t, err, repoError)
-	require.ErrorIs(t, service.SaveConfiguration(ctx, nil), repoError)
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		repoErr error
+		wantErr error
+	}{
+		{name: "missing current user", ctx: context.Background(), repoErr: repoError, wantErr: user.ErrNoUser},
+		{name: "repository failure", ctx: user.WithUser(context.Background(), user.User{Id: 1}), repoErr: repoError, wantErr: repoError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newRepositoryStub()
+			repo.err = test.repoErr
+			service := NewService(repo)
+
+			_, err := service.FindConfiguration(test.ctx)
+
+			require.ErrorIs(t, err, test.wantErr)
+		})
+	}
+}
+
+func TestServiceImpl_SaveConfigurationErrors(t *testing.T) {
+	repoError := errors.New("database unavailable")
+	configuration := &Configuration{Cards: []Card{{Id: "time-today", Visible: true}}}
+	tests := []struct {
+		name          string
+		ctx           context.Context
+		configuration *Configuration
+		repoErr       error
+		wantErr       error
+	}{
+		{name: "save without current user", ctx: context.Background(), configuration: configuration, repoErr: repoError, wantErr: user.ErrNoUser},
+		{name: "reset without current user", ctx: context.Background(), repoErr: repoError, wantErr: user.ErrNoUser},
+		{name: "save repository failure", ctx: user.WithUser(context.Background(), user.User{Id: 1}), configuration: configuration, repoErr: repoError, wantErr: repoError},
+		{name: "reset repository failure", ctx: user.WithUser(context.Background(), user.User{Id: 1}), repoErr: repoError, wantErr: repoError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newRepositoryStub()
+			repo.err = test.repoErr
+			service := NewService(repo)
+
+			err := service.SaveConfiguration(test.ctx, test.configuration)
+
+			require.ErrorIs(t, err, test.wantErr)
+		})
+	}
 }
