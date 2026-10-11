@@ -249,6 +249,7 @@ func (s *ServiceImpl) GetReport(ctx context.Context, planId int, from *time.Time
 	return Report{
 		PlanId:              bp.Id,
 		PlanName:            bp.Name,
+		FirstTrackedAt:      &earliest,
 		StartDate:           startDate,
 		EndDate:             endDate,
 		WeekCount:           len(weeks),

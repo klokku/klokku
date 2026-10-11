@@ -42,8 +42,10 @@ type ReportTotalsDTO struct {
 }
 
 type ReportDTO struct {
-	PlanId            int                    `json:"planId"`
-	PlanName          string                 `json:"planName"`
+	PlanId   int    `json:"planId"`
+	PlanName string `json:"planName"`
+	// Earliest tracked event for the plan's current items, independent of the requested period.
+	FirstTrackedAt    *time.Time             `json:"firstTrackedAt,omitempty"`
 	StartDate         time.Time              `json:"startDate"`
 	EndDate           time.Time              `json:"endDate"`
 	WeekCount         int                    `json:"weekCount"`
@@ -253,6 +255,7 @@ func reportToDTO(report Report) ReportDTO {
 	return ReportDTO{
 		PlanId:            report.PlanId,
 		PlanName:          report.PlanName,
+		FirstTrackedAt:    report.FirstTrackedAt,
 		StartDate:         report.StartDate,
 		EndDate:           report.EndDate,
 		WeekCount:         report.WeekCount,

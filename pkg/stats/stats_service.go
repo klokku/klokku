@@ -74,8 +74,13 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 		return WeeklyStatsSummary{}, err
 	}
 
-	// Currently supports only weekly stats. `weekTime` is used to find out which week.
-	from, to := weekTimeRange(weekTime, currentUser.Settings.WeekFirstDay)
+	userTimezone, err := time.LoadLocation(currentUser.Settings.Timezone)
+	if err != nil {
+		return WeeklyStatsSummary{}, fmt.Errorf("failed to load user timezone: %w", err)
+	}
+
+	// RFC3339's numeric offset alone does not preserve daylight-saving rules.
+	from, to := weekTimeRange(weekTime.In(userTimezone), currentUser.Settings.WeekFirstDay)
 
 	weeklyItems, err := s.weeklyPlanService.GetItemsForWeek(ctx, from)
 	if err != nil {
@@ -129,10 +134,6 @@ func (s *StatsServiceImpl) GetWeeklyStats(ctx context.Context, weekTime time.Tim
 	calendarEvents, err := s.calendar.GetEvents(ctx, from, to)
 	if err != nil {
 		return WeeklyStatsSummary{}, err
-	}
-	userTimezone, err := time.LoadLocation(currentUser.Settings.Timezone)
-	if err != nil {
-		return WeeklyStatsSummary{}, fmt.Errorf("failed to load user timezone: %w", err)
 	}
 	eventsDurationPerDay := s.eventsDurationPerDay(calendarEvents, userTimezone)
 	eventsDurationPerBudget := s.eventsDurationPerBudget(calendarEvents)
