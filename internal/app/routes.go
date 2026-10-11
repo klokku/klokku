@@ -60,6 +60,9 @@ func RegisterRoutes(r *mux.Router, deps *Dependencies, cfg config.Application) {
 		Queries("from", "{from}", "to", "{to}", "budgetItemId", "{budgetItemId}")
 
 	// User management
+	r.HandleFunc("/api/user/current/dashboard", deps.DashboardHandler.GetConfiguration).Methods("GET")
+	r.HandleFunc("/api/user/current/dashboard", deps.DashboardHandler.SaveConfiguration).Methods("PUT")
+	r.HandleFunc("/api/user/current/dashboard", deps.DashboardHandler.ResetConfiguration).Methods("DELETE")
 	r.HandleFunc("/api/user/current", deps.UserHandler.CurrentUser).Methods("GET")
 	r.HandleFunc("/api/user/current", deps.UserHandler.UpdateUser).Methods("PUT")
 	r.HandleFunc("/api/user/current/photo", deps.UserHandler.UploadPhoto).Methods("PUT")

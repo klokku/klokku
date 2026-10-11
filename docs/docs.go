@@ -1948,6 +1948,124 @@ const docTemplate = `{
                 ]
             }
         },
+        "/api/user/current/dashboard": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get dashboard configuration (null means application defaults)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dashboard.Configuration"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to read configuration",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Save ordered dashboard card visibility",
+                "parameters": [
+                    {
+                        "description": "Dashboard configuration",
+                        "name": "configuration",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dashboard.Configuration"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dashboard.Configuration"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid configuration",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to save configuration",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Restore application dashboard defaults",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to reset configuration",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "XUserId": []
+                    }
+                ]
+            }
+        },
         "/api/user/current/photo": {
             "get": {
                 "description": "Retrieve a user's profile photo. If userUid is provided, gets that user's photo, otherwise gets current user's photo",
@@ -3135,6 +3253,28 @@ const docTemplate = `{
                 },
                 "weeklyDuration": {
                     "type": "integer"
+                }
+            }
+        },
+        "dashboard.Card": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "visible": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dashboard.Configuration": {
+            "type": "object",
+            "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dashboard.Card"
+                    }
                 }
             }
         },
